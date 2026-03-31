@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Mar 31, 2026 at 04:06 AM
+-- Generation Time: Mar 31, 2026 at 06:37 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -179,11 +179,14 @@ INSERT INTO `citas` (`id_cita`, `id_paciente`, `id_odontologo`, `fecha_cita`, `h
 (33, 2, 1, '2026-03-31', '09:20:00', '10:00:00', 'implante', 'completada', 0, 3, 1, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, '2026-03-30 15:15:01', '2026-03-30 15:15:11'),
 (34, 3, 1, '2026-03-31', '10:00:00', '10:40:00', 'implante', 'completada', 0, 3, 1, 1, 15, NULL, NULL, NULL, 0, NULL, NULL, '2026-03-30 15:27:27', '2026-03-30 15:27:35'),
 (35, 1, 1, '2026-03-31', '10:40:00', '11:20:00', 'mulas', 'ausente', 0, 3, 1, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, '2026-03-30 15:28:10', '2026-03-30 15:28:16'),
-(36, 2, 1, '2026-04-01', '08:00:00', '08:40:00', 'muela', 'programada', 0, 3, 1, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, '2026-03-30 15:54:55', NULL),
+(36, 2, 1, '2026-04-03', '09:20:00', '10:00:00', 'muela', 'cancelada_pac', 3, 3, 0, 0, 0, 4, NULL, '2026-03-31 00:34:47', 0, NULL, NULL, '2026-03-30 15:54:55', '2026-03-31 00:34:47'),
 (37, 4, 1, '2026-04-03', '08:00:00', '08:40:00', 'limpieza', 'programada', 0, 3, 1, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, '2026-03-30 19:16:29', NULL),
 (38, 1, 1, '2026-04-02', '08:00:00', '08:40:00', 'muela', 'ausente', 0, 3, 1, 0, 0, NULL, NULL, NULL, 0, '2026-04-01 08:00:00', '2026-04-02 07:00:00', '2026-03-30 20:09:20', '2026-03-30 21:37:12'),
 (39, 1, 1, '2026-03-31', '08:40:00', '09:20:00', 'muela', 'ausente', 0, 3, 1, 0, 0, NULL, NULL, NULL, 0, '2026-03-30 08:40:00', '2026-03-31 07:40:00', '2026-03-30 21:17:15', '2026-03-30 21:36:39'),
-(40, 1, 1, '2026-03-31', '10:00:00', '10:40:00', 'dolor', 'ausente', 0, 3, 1, 0, 0, NULL, NULL, NULL, 0, '2026-03-30 10:00:00', '2026-03-31 09:00:00', '2026-03-30 21:17:24', '2026-03-30 21:36:51');
+(40, 1, 1, '2026-03-31', '10:00:00', '10:40:00', 'dolor', 'ausente', 0, 3, 1, 0, 0, NULL, NULL, NULL, 0, '2026-03-30 10:00:00', '2026-03-31 09:00:00', '2026-03-30 21:17:24', '2026-03-30 21:36:51'),
+(41, 2, 1, '2026-04-03', '08:40:00', '09:20:00', 'muela', 'programada', 1, 3, 1, 0, 0, NULL, NULL, NULL, 0, '2026-03-30 15:20:00', '2026-03-31 14:20:00', '2026-03-31 00:13:22', '2026-03-31 00:16:54'),
+(42, 2, 1, '2026-04-03', '10:00:00', '12:00:00', 'blanqueamiento', 'cancelada_pac', 0, 3, 1, 0, 0, 4, NULL, '2026-03-31 00:34:49', 0, NULL, NULL, '2026-03-31 00:26:37', '2026-03-31 00:34:49'),
+(43, 2, 1, '2026-04-06', '08:00:00', '10:40:00', 'protesis', 'programada', 0, 3, 1, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, '2026-03-31 00:33:30', NULL);
 
 --
 -- Triggers `citas`
@@ -238,6 +241,44 @@ CREATE TRIGGER `incrementar_cambios_cita` BEFORE UPDATE ON `citas` FOR EACH ROW 
 END
 $$
 DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `registrar_historial_citas` AFTER UPDATE ON `citas` FOR EACH ROW BEGIN
+    DECLARE v_id_usuario INT;
+    
+    -- Obtener el ID del usuario que modificó
+    IF NEW.cancelado_por IS NOT NULL AND NEW.cancelado_por > 0 THEN
+        SET v_id_usuario = NEW.cancelado_por;
+    ELSE
+        -- Obtener el ID de usuario del paciente
+        SELECT id_usuario INTO v_id_usuario 
+        FROM pacientes 
+        WHERE id_paciente = NEW.id_paciente;
+    END IF;
+    
+    -- Solo registrar si cambió fecha u hora
+    IF (NEW.fecha_cita != OLD.fecha_cita OR NEW.hora_cita != OLD.hora_cita) THEN
+        
+        INSERT INTO historial_modificaciones_citas (
+            id_cita,
+            id_usuario,
+            fecha_anterior,
+            hora_anterior,
+            fecha_nueva,
+            hora_nueva,
+            fecha_modificacion
+        ) VALUES (
+            NEW.id_cita,
+            v_id_usuario,
+            OLD.fecha_cita,
+            OLD.hora_cita,
+            NEW.fecha_cita,
+            NEW.hora_cita,
+            NOW()
+        );
+    END IF;
+END
+$$
+DELIMITER ;
 
 -- --------------------------------------------------------
 
@@ -274,6 +315,16 @@ CREATE TABLE `historial_modificaciones_citas` (
   `hora_nueva` time DEFAULT NULL,
   `fecha_modificacion` datetime DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `historial_modificaciones_citas`
+--
+
+INSERT INTO `historial_modificaciones_citas` (`id_historial`, `id_cita`, `id_usuario`, `fecha_anterior`, `hora_anterior`, `fecha_nueva`, `hora_nueva`, `fecha_modificacion`) VALUES
+(1, 36, 4, '2026-04-01', '08:00:00', '2026-04-10', '10:00:00', '2026-03-31 00:01:10'),
+(2, 41, 4, '2026-03-31', '15:20:00', '2026-04-03', '08:40:00', '2026-03-31 00:16:54'),
+(3, 36, 4, '2026-04-10', '10:00:00', '2026-03-31', '08:40:00', '2026-03-31 00:17:19'),
+(4, 36, 4, '2026-03-31', '08:40:00', '2026-04-03', '09:20:00', '2026-03-31 00:29:18');
 
 -- --------------------------------------------------------
 
@@ -352,7 +403,9 @@ INSERT INTO `mensajes_pendientes` (`id_mensaje`, `id_usuario`, `id_cita`, `tipo`
 (18, 4, 19, 'cancelacion', 'email', 'Tu cita ha sido cancelada exitosamente. Puedes agendar un nuevo horario cuando lo desees.', NULL, NULL, 0, '2026-03-17 05:06:18', NULL, '2026-03-17 05:06:18'),
 (19, 4, 27, '', 'email', 'Tu cita ha sido cancelada por el odontólogo. Motivo: emergencia personal. \r\n                    Por favor, ingresa al sistema para elegir una nueva fecha entre las opciones disponibles.', NULL, NULL, 0, '2026-03-17 05:08:10', NULL, '2026-03-17 05:08:10'),
 (20, 4, 28, '', 'email', 'Tu cita ha sido cancelada por el odontólogo. Motivo: emergencia. \r\n                    Por favor, ingresa al sistema para elegir una nueva fecha entre las opciones disponibles.', NULL, NULL, 0, '2026-03-17 09:17:51', NULL, '2026-03-17 09:17:51'),
-(21, 4, 32, '', 'email', 'Tu cita ha sido cancelada por el odontólogo. Motivo: capacitacion. \r\n                    Por favor, ingresa al sistema para elegir una nueva fecha entre las opciones disponibles.', NULL, NULL, 0, '2026-03-30 15:13:36', NULL, '2026-03-30 15:13:36');
+(21, 4, 32, '', 'email', 'Tu cita ha sido cancelada por el odontólogo. Motivo: capacitacion. \r\n                    Por favor, ingresa al sistema para elegir una nueva fecha entre las opciones disponibles.', NULL, NULL, 0, '2026-03-30 15:13:36', NULL, '2026-03-30 15:13:36'),
+(22, 4, 36, 'cancelacion', 'email', 'Tu cita ha sido cancelada exitosamente. Puedes agendar un nuevo horario cuando lo desees.', NULL, NULL, 0, '2026-03-31 00:34:47', NULL, '2026-03-31 00:34:47'),
+(23, 4, 42, 'cancelacion', 'email', 'Tu cita ha sido cancelada exitosamente. Puedes agendar un nuevo horario cuando lo desees.', NULL, NULL, 0, '2026-03-31 00:34:49', NULL, '2026-03-31 00:34:49');
 
 -- --------------------------------------------------------
 
@@ -419,7 +472,7 @@ INSERT INTO `opciones_reprogramacion_cita` (`id_opcion`, `id_cita_original`, `fe
 (16, 28, '2026-03-25', '08:00:00', '08:40:00', 1, 1, '2026-03-17 09:17:51'),
 (17, 32, '2026-03-31', '16:40:00', '17:20:00', 1, 0, '2026-03-30 15:13:36'),
 (18, 32, '2026-03-31', '14:40:00', '15:20:00', 1, 0, '2026-03-30 15:13:36'),
-(19, 32, '2026-03-31', '15:20:00', '16:00:00', 1, 0, '2026-03-30 15:13:36'),
+(19, 32, '2026-03-31', '15:20:00', '16:00:00', 1, 1, '2026-03-30 15:13:36'),
 (20, 32, '2026-03-31', '16:00:00', '16:40:00', 1, 0, '2026-03-30 15:13:36');
 
 -- --------------------------------------------------------
@@ -605,10 +658,10 @@ CREATE TABLE `usuarios` (
 --
 
 INSERT INTO `usuarios` (`id_usuario`, `email`, `contrasena_hash`, `nombre_completo`, `telefono`, `rol`, `email_verificado`, `codigo_verificacion`, `codigo_expiracion`, `activo`, `fecha_registro`, `ultimo_acceso`) VALUES
-(1, 'carlos.mamani@ecodent.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Dr. Carlos Mamani', '77112233', 'odontologo', 1, NULL, NULL, 1, '2026-03-14 14:03:49', '2026-03-30 21:18:24'),
+(1, 'carlos.mamani@ecodent.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Dr. Carlos Mamani', '77112233', 'odontologo', 1, NULL, NULL, 1, '2026-03-14 14:03:49', '2026-03-31 00:32:57'),
 (2, 'maria.quispe@ecodent.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Dra. María Quispe', '77112234', 'odontologo', 1, NULL, NULL, 1, '2026-03-14 14:03:49', NULL),
-(3, 'juan.perez@email.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Juan Pérez', '71234567', 'paciente', 1, NULL, NULL, 1, '2026-03-14 14:03:49', '2026-03-30 21:16:56'),
-(4, 'richardocsachoqueherrera985@gmail.com', '$2y$10$8dC6Qdmyt8R/dfInimLiO.sI8dGTNV0LK5Hiehtf0iTXXB3AHaBU6', 'Richard Edmundo Herrera', '73537562', 'paciente', 0, '625677', '2026-03-14 19:27:19', 1, '2026-03-14 14:12:19', '2026-03-17 09:43:17'),
+(3, 'juan.perez@email.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Juan Pérez', '71234567', 'paciente', 1, NULL, NULL, 1, '2026-03-14 14:03:49', '2026-03-31 00:32:33'),
+(4, 'richardocsachoqueherrera985@gmail.com', '$2y$10$8dC6Qdmyt8R/dfInimLiO.sI8dGTNV0LK5Hiehtf0iTXXB3AHaBU6', 'Richard Edmundo Herrera', '73537562', 'paciente', 0, '625677', '2026-03-14 19:27:19', 1, '2026-03-14 14:12:19', '2026-03-31 00:33:49'),
 (5, 'ser@gmail.com', '$2y$10$JylLczXrWYIEqLFiLUhLSORT4ILIUJru0GEPsq.Cri50kaJ0A6t1K', 'sergio', '12347885', 'paciente', 1, NULL, NULL, 1, '2026-03-14 14:19:24', '2026-03-14 14:19:24'),
 (6, 'jhamilth@gmail.com', '$2y$10$o/DKzsv0cTi3f8Wby6hFve/yXebNW8SgRImWhs4HlGCFach15/MUa', 'Jhamileth', '73537562', 'paciente', 1, NULL, NULL, 1, '2026-03-30 19:16:01', NULL);
 
@@ -756,7 +809,7 @@ ALTER TABLE `backups`
 -- AUTO_INCREMENT for table `citas`
 --
 ALTER TABLE `citas`
-  MODIFY `id_cita` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=41;
+  MODIFY `id_cita` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=44;
 
 --
 -- AUTO_INCREMENT for table `estadisticas_odontologos`
@@ -768,7 +821,7 @@ ALTER TABLE `estadisticas_odontologos`
 -- AUTO_INCREMENT for table `historial_modificaciones_citas`
 --
 ALTER TABLE `historial_modificaciones_citas`
-  MODIFY `id_historial` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id_historial` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `horarios_odontologos`
@@ -780,7 +833,7 @@ ALTER TABLE `horarios_odontologos`
 -- AUTO_INCREMENT for table `mensajes_pendientes`
 --
 ALTER TABLE `mensajes_pendientes`
-  MODIFY `id_mensaje` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=22;
+  MODIFY `id_mensaje` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=24;
 
 --
 -- AUTO_INCREMENT for table `odontologos`
