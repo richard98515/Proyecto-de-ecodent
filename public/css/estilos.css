@@ -1,0 +1,71 @@
+/* public/css/estilos.css */
+/* Estilos personalizados para ECO-DENT */
+
+/* Ajustes generales */
+body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1;
+}
+
+/* Para las tarjetas de horarios disponibles */
+.slot-disponible {
+    background-color: #e8f5e9;
+    border: 1px solid #4caf50;
+    padding: 10px;
+    margin: 5px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.slot-disponible:hover {
+    background-color: #4caf50;
+    color: white;
+    transform: scale(1.02);
+}
+
+.slot-ocupado {
+    background-color: #ffebee;
+    border: 1px solid #f44336;
+    padding: 10px;
+    margin: 5px;
+    border-radius: 5px;
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Estilos para el chat del asistente virtual */
+.chat-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 350px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 5px 25px rgba(0,0,0,0.2);
+    z-index: 1000;
+}
+
+.chat-header {
+    background: #0d6efd;
+    color: white;
+    padding: 10px;
+    border-radius: 10px 10px 0 0;
+    cursor: pointer;
+}
+
+.chat-messages {
+    height: 300px;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+.chat-input {
+    border-top: 1px solid #dee2e6;
+    padding: 10px;
+}

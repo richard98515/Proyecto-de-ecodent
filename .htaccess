@@ -1,0 +1,16 @@
+# .htaccess en la raíz del proyecto
+# Configuraciones de seguridad para Apache
+
+# Desactivar listado de directorios
+Options -Indexes
+
+# Proteger archivos sensibles
+<FilesMatch "\.(sql|log|ini)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Redirigir todo a HTTPS (si tienes SSL)
+# RewriteEngine On
+# RewriteCond %{HTTPS} off
+# RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
