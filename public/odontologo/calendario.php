@@ -101,10 +101,38 @@ $hoy                  = date('Y-m-d');
 
 require_once '../../includes/header.php';
 
+
 if (isset($_SESSION['exito'])) { $exito = $_SESSION['exito']; unset($_SESSION['exito']); }
 if (isset($_SESSION['error'])) { $error = $_SESSION['error']; unset($_SESSION['error']); }
 ?>
-
+<?php if (isset($_SESSION['whatsapp_pendiente'])): 
+    $wp = $_SESSION['whatsapp_pendiente'];
+    // Limpiar número: quitar espacios, guiones, agregar código Bolivia +591
+    $telefono_limpio = preg_replace('/[^0-9]/', '', $wp['telefono']);
+    if (strlen($telefono_limpio) == 8) {
+        $telefono_limpio = '591' . $telefono_limpio; // Bolivia
+    }
+    $mensaje_encoded = urlencode($wp['mensaje']);
+    $link_whatsapp = "https://wa.me/{$telefono_limpio}?text={$mensaje_encoded}";
+    unset($_SESSION['whatsapp_pendiente']); // Limpiar sesión
+?>
+<div class="alert alert-success alert-dismissible fade show" role="alert">
+    <h5><i class="bi bi-check-circle-fill"></i> Cita cancelada exitosamente</h5>
+    <p class="mb-2">El slot quedó bloqueado y el email fue registrado para envío.</p>
+    <p class="mb-2"><strong>¿Deseas notificar también por WhatsApp?</strong></p>
+    <a href="<?php echo $link_whatsapp; ?>" 
+       target="_blank" 
+       class="btn btn-success btn-lg">
+        <i class="bi bi-whatsapp"></i> Enviar WhatsApp al paciente
+    </a>
+    <small class="d-block mt-2 text-muted">
+        El mensaje ya está escrito. Solo haz click en Enviar dentro de WhatsApp.
+    </small>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+<?php 
+endif; 
+?>
 <style>
 /* ─── Celda del calendario ─── */
 .calendario-dia {

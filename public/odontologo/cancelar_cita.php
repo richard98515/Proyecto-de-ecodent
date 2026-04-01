@@ -132,13 +132,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancelar'])) {
                 $conexion
             );
 
-            if ($resultado_cancelacion['exito']) {
+           if ($resultado_cancelacion['exito']) {
+
+                if (isset($resultado_cancelacion['whatsapp'])) {
+                    $_SESSION['whatsapp_pendiente'] = $resultado_cancelacion['whatsapp'];
+                }
+
                 $_SESSION['exito'] = $resultado_cancelacion['mensaje'];
                 redirigir('/ecodent/public/odontologo/calendario.php');
-            } else {
-                $error = $resultado_cancelacion['error'];
             }
-        }
+      }
     }
 }
 
