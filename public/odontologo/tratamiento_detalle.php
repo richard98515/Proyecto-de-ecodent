@@ -5,17 +5,30 @@
 require_once '../../config/database.php';
 require_once '../../includes/funciones.php';
 
-requerirRol('odontologo');
+// VERIFICACIÓN MODIFICADA - Permite admin y odontólogo
+if (!estaLogueado()) {
+    redirigir('/ecodent/public/login.php');
+}
+
+if (!esAdmin() && !esOdontologo()) {
+    // Si no es admin ni odontólogo, redirigir
+    redirigir('/ecodent/public/index.php');
+}
 
 $id_usuario = $_SESSION['id_usuario'];
 
-// Obtener id_odontologo
-$stmt = $conexion->prepare("SELECT id_odontologo FROM odontologos WHERE id_usuario = ?");
-$stmt->bind_param("i", $id_usuario);
-$stmt->execute();
-$resultado = $stmt->get_result();
-$odontologo = $resultado->fetch_assoc();
-$id_odontologo = $odontologo['id_odontologo'];
+// Si es odontólogo, obtener su ID específico
+if (esOdontologo()) {
+    $stmt = $conexion->prepare("SELECT id_odontologo FROM odontologos WHERE id_usuario = ?");
+    $stmt->bind_param("i", $id_usuario);
+    $stmt->execute();
+    $resultado = $stmt->get_result();
+    $odontologo = $resultado->fetch_assoc();
+    $id_odontologo = $odontologo['id_odontologo'];
+} else {
+    // Si es admin, no restringir por odontólogo
+    $id_odontologo = null;
+}
 
 // Verificar que se haya pasado un ID
 if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
@@ -25,20 +38,34 @@ if (!isset($_GET['id']) || !is_numeric($_GET['id'])) {
 
 $id_tratamiento = $_GET['id'];
 
-// Obtener datos del tratamiento
-$stmt_tratamiento = $conexion->prepare("
-    SELECT t.*, u.nombre_completo as paciente_nombre, p.id_paciente
-    FROM tratamientos t
-    JOIN pacientes p ON t.id_paciente = p.id_paciente
-    JOIN usuarios u ON p.id_usuario = u.id_usuario
-    WHERE t.id_tratamiento = ? AND t.id_odontologo = ?
-");
-$stmt_tratamiento->bind_param("ii", $id_tratamiento, $id_odontologo);
+// Obtener datos del tratamiento - MODIFICADO para admin
+if (esAdmin()) {
+    // Admin ve todos los tratamientos
+    $stmt_tratamiento = $conexion->prepare("
+        SELECT t.*, u.nombre_completo as paciente_nombre, p.id_paciente
+        FROM tratamientos t
+        JOIN pacientes p ON t.id_paciente = p.id_paciente
+        JOIN usuarios u ON p.id_usuario = u.id_usuario
+        WHERE t.id_tratamiento = ?
+    ");
+    $stmt_tratamiento->bind_param("i", $id_tratamiento);
+} else {
+    // Odontólogo solo ve sus tratamientos
+    $stmt_tratamiento = $conexion->prepare("
+        SELECT t.*, u.nombre_completo as paciente_nombre, p.id_paciente
+        FROM tratamientos t
+        JOIN pacientes p ON t.id_paciente = p.id_paciente
+        JOIN usuarios u ON p.id_usuario = u.id_usuario
+        WHERE t.id_tratamiento = ? AND t.id_odontologo = ?
+    ");
+    $stmt_tratamiento->bind_param("ii", $id_tratamiento, $id_odontologo);
+}
+
 $stmt_tratamiento->execute();
 $tratamiento = $stmt_tratamiento->get_result()->fetch_assoc();
 
 if (!$tratamiento) {
-    $_SESSION['error'] = "Tratamiento no encontrado.";
+    $_SESSION['error'] = "Tratamiento no encontrado o no tienes permisos para verlo.";
     redirigir('/ecodent/public/odontologo/pacientes.php');
 }
 

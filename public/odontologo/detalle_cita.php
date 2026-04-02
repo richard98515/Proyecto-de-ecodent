@@ -7,20 +7,41 @@
 // =============================================
 require_once '../../config/database.php';
 require_once '../../includes/funciones.php';
-date_default_timezone_set('America/La_Paz'); // Cambia según tu ubicación
+date_default_timezone_set('America/La_Paz');
 
-// Verificar que solo odontólogos puedan acceder
-requerirRol('odontologo');
+// Verificar autenticación
+if (!estaLogueado()) {
+    redirigir('/ecodent/public/login.php');
+}
+
+// Obtener el rol del usuario
+$es_admin = esAdmin();
+$es_odontologo = esOdontologo();
+
+// Verificar permisos: solo admin u odontólogo pueden acceder
+if (!$es_admin && !$es_odontologo) {
+    $_SESSION['error'] = "No tienes permisos para acceder a esta página";
+    redirigir('/ecodent/public/dashboard.php');
+}
 
 $id_usuario = $_SESSION['id_usuario'];
+$id_odontologo = null;
 
-// Obtener id_odontologo
-$stmt = $conexion->prepare("SELECT id_odontologo FROM odontologos WHERE id_usuario = ?");
-$stmt->bind_param("i", $id_usuario);
-$stmt->execute();
-$resultado = $stmt->get_result();
-$odontologo = $resultado->fetch_assoc();
-$id_odontologo = $odontologo['id_odontologo'];
+// Solo si es odontólogo, obtener su ID
+if ($es_odontologo) {
+    $stmt = $conexion->prepare("SELECT id_odontologo FROM odontologos WHERE id_usuario = ?");
+    $stmt->bind_param("i", $id_usuario);
+    $stmt->execute();
+    $resultado = $stmt->get_result();
+    
+    if ($resultado->num_rows > 0) {
+        $odontologo_data = $resultado->fetch_assoc();
+        $id_odontologo = $odontologo_data['id_odontologo'];
+    } else {
+        $_SESSION['error'] = "No se encontró información del odontólogo. Contacte al administrador.";
+        redirigir('/ecodent/public/dashboard.php');
+    }
+}
 
 // =============================================
 // VERIFICAR QUE VIENE UN ID DE CITA VÁLIDO
@@ -35,33 +56,58 @@ $id_cita = (int)$_GET['id_cita'];
 // =============================================
 // OBTENER DATOS DE LA CITA
 // =============================================
-$sql = "SELECT c.*, 
-               p.id_paciente,
-               u.nombre_completo as nombre_paciente,
-               u.email,
-               u.telefono,
-               u.fecha_registro as paciente_desde,
-               (SELECT COUNT(*) FROM citas WHERE id_paciente = c.id_paciente) as total_citas_paciente
-        FROM citas c
-        JOIN pacientes p ON c.id_paciente = p.id_paciente
-        JOIN usuarios u ON p.id_usuario = u.id_usuario
-        WHERE c.id_cita = ? AND c.id_odontologo = ?";
-
-$stmt = $conexion->prepare($sql);
-$stmt->bind_param("ii", $id_cita, $id_odontologo);
-$stmt->execute();
-$resultado = $stmt->get_result();
-$cita = $resultado->fetch_assoc();
+if ($es_odontologo && $id_odontologo) {
+    // Odontólogo ve solo sus citas
+    $sql = "SELECT c.*, 
+                   p.id_paciente,
+                   u.nombre_completo as nombre_paciente,
+                   u.email,
+                   u.telefono,
+                   u.fecha_registro as paciente_desde,
+                   (SELECT COUNT(*) FROM citas WHERE id_paciente = c.id_paciente AND id_odontologo = ?) as total_citas_paciente
+            FROM citas c
+            JOIN pacientes p ON c.id_paciente = p.id_paciente
+            JOIN usuarios u ON p.id_usuario = u.id_usuario
+            WHERE c.id_cita = ? AND c.id_odontologo = ?";
+    
+    $stmt = $conexion->prepare($sql);
+    $stmt->bind_param("iii", $id_odontologo, $id_cita, $id_odontologo);
+    $stmt->execute();
+    $resultado = $stmt->get_result();
+    $cita = $resultado->fetch_assoc();
+} else {
+    // Admin puede ver cualquier cita
+    $sql = "SELECT c.*, 
+                   p.id_paciente,
+                   u.nombre_completo as nombre_paciente,
+                   u.email,
+                   u.telefono,
+                   u.fecha_registro as paciente_desde,
+                   od.nombre_completo as nombre_odontologo,
+                   (SELECT COUNT(*) FROM citas WHERE id_paciente = c.id_paciente) as total_citas_paciente
+            FROM citas c
+            JOIN pacientes p ON c.id_paciente = p.id_paciente
+            JOIN usuarios u ON p.id_usuario = u.id_usuario
+            JOIN odontologos o ON c.id_odontologo = o.id_odontologo
+            JOIN usuarios od ON o.id_usuario = od.id_usuario
+            WHERE c.id_cita = ?";
+    
+    $stmt = $conexion->prepare($sql);
+    $stmt->bind_param("i", $id_cita);
+    $stmt->execute();
+    $resultado = $stmt->get_result();
+    $cita = $resultado->fetch_assoc();
+}
 
 if (!$cita) {
-    $_SESSION['error'] = 'Cita no encontrada';
+    $_SESSION['error'] = 'Cita no encontrada o no tienes permisos para verla';
     redirigir('/ecodent/public/odontologo/calendario.php');
 }
 
 // =============================================
-// PROCESAR CAMBIO DE ESTADO (completada, ausente, etc.)
+// PROCESAR CAMBIO DE ESTADO (solo odontólogos)
 // =============================================
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cambiar_estado'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cambiar_estado']) && $es_odontologo) {
     
     $nuevo_estado = $_POST['estado'];
     $actualizar = false;
@@ -147,6 +193,12 @@ if (isset($_SESSION['error'])) {
         <?php if (isset($error)): ?>
             <div class="alert alert-danger"><?php echo $error; ?></div>
         <?php endif; ?>
+        
+        <?php if ($es_admin): ?>
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> Vista de administrador - <?php echo isset($cita['nombre_odontologo']) ? 'Odontólogo: ' . htmlspecialchars($cita['nombre_odontologo']) : ''; ?>
+            </div>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -165,8 +217,14 @@ if (isset($_SESSION['error'])) {
                     </tr>
                     <tr>
                         <th>Hora:</th>
-                        <td><?php echo date('h:i A', strtotime($cita['hora_cita']))." - Hasta - ".date('h:i A', strtotime($cita['hora_fin']));  ?></td>
+                        <td><?php echo date('h:i A', strtotime($cita['hora_cita']))." - Hasta - ".date('h:i A', strtotime($cita['hora_fin'])); ?></td>
                     </tr>
+                    <?php if ($es_admin && isset($cita['nombre_odontologo'])): ?>
+                    <tr>
+                        <th>Odontólogo:</th>
+                        <td><i class="bi bi-hospital"></i> Dr. <?php echo htmlspecialchars($cita['nombre_odontologo']); ?></td>
+                    </tr>
+                    <?php endif; ?>
                     <tr>
                         <th>Estado:</th>
                         <td>
@@ -179,9 +237,17 @@ if (isset($_SESSION['error'])) {
                                 'cancelada_doc' => 'badge bg-danger',
                                 'ausente' => 'badge bg-warning'
                             ];
+                            $estado_texto = [
+                                'programada' => 'Programada',
+                                'confirmada' => 'Confirmada',
+                                'completada' => 'Completada',
+                                'cancelada_pac' => 'Cancelada (Paciente)',
+                                'cancelada_doc' => 'Cancelada (Doctor)',
+                                'ausente' => 'No Asistió'
+                            ];
                             $clase = $estados[$cita['estado']] ?? 'badge bg-secondary';
                             ?>
-                            <span class="<?php echo $clase; ?>"><?php echo $cita['estado']; ?></span>
+                            <span class="<?php echo $clase; ?>"><?php echo $estado_texto[$cita['estado']] ?? $cita['estado']; ?></span>
                         </td>
                     </tr>
                     <tr>
@@ -208,8 +274,8 @@ if (isset($_SESSION['error'])) {
             </div>
         </div>
         
-        <!-- Acciones según estado -->
-        <?php if ($cita['estado'] == 'programada' || $cita['estado'] == 'confirmada'): ?>
+        <!-- Acciones según estado - Solo para odontólogos -->
+        <?php if ($es_odontologo && ($cita['estado'] == 'programada' || $cita['estado'] == 'confirmada')): ?>
             <div class="card mb-3">
                 <div class="card-header bg-success text-white">
                     <h5 class="mb-0">Registrar Asistencia</h5>
@@ -257,15 +323,28 @@ if (isset($_SESSION['error'])) {
             </div>
         <?php endif; ?>
         
-        <!-- Botón para cancelar (si está programada) -->
-        <?php if ($cita['estado'] == 'programada' || $cita['estado'] == 'confirmada'): ?>
+        <!-- Botón para cancelar - Solo para odontólogos -->
+        <?php if ($es_odontologo && ($cita['estado'] == 'programada' || $cita['estado'] == 'confirmada')): ?>
             <div class="d-grid gap-2">
                 <a href="cancelar_cita.php?id_cita=<?php echo $id_cita; ?>" 
                    class="btn btn-danger">
-                    <i class="bi bi-x-circle"></i> Cancelar Cita (CASO 2 - Bloquear Slot)
+                    <i class="bi bi-x-circle"></i> Cancelar Cita
                 </a>
             </div>
         <?php endif; ?>
+        
+        <!-- Botón para volver al calendario del odontólogo correspondiente -->
+        <div class="mt-3">
+            <?php if ($es_admin && isset($cita['id_odontologo'])): ?>
+                <a href="calendario.php?ver_odontologo=<?php echo $cita['id_odontologo']; ?>" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> Volver al Calendario del Odontólogo
+                </a>
+            <?php else: ?>
+                <a href="calendario.php" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> Volver al Calendario
+                </a>
+            <?php endif; ?>
+        </div>
     </div>
     
     <div class="col-md-6">
@@ -278,11 +357,11 @@ if (isset($_SESSION['error'])) {
                 <table class="table table-bordered">
                     <tr>
                         <th>Nombre:</th>
-                        <td><?php echo $cita['nombre_paciente']; ?></td>
+                        <td><?php echo htmlspecialchars($cita['nombre_paciente']); ?></td>
                     </tr>
                     <tr>
                         <th>Email:</th>
-                        <td><?php echo $cita['email']; ?></td>
+                        <td><?php echo htmlspecialchars($cita['email']); ?></td>
                     </tr>
                     <tr>
                         <th>Teléfono:</th>
@@ -305,13 +384,6 @@ if (isset($_SESSION['error'])) {
                     </a>
                 </div>
             </div>
-        </div>
-        
-        <!-- Botones de navegación -->
-        <div class="d-grid gap-2">
-            <a href="calendario.php" class="btn btn-secondary">
-                <i class="bi bi-arrow-left"></i> Volver al Calendario
-            </a>
         </div>
     </div>
 </div>

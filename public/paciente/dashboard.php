@@ -6,6 +6,19 @@ require_once '../../includes/header.php';
 require_once '../../includes/funciones.php';
 require_once '../../config/database.php';
 
+// =============================================
+// VALIDACIÓN PARA ADMIN Y ODONTÓLOGO
+// =============================================
+// Si es admin, redirigir a su dashboard
+if (esAdmin()) {
+    redirigir('/ecodent/public/admin/dashboard.php');
+}
+
+// Si es odontólogo, redirigir a su dashboard
+if (esOdontologo()) {
+    redirigir('/ecodent/public/odontologo/dashboard.php');
+}
+
 // Verificar que solo pacientes puedan acceder
 requerirRol('paciente');
 

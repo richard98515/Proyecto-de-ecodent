@@ -4,27 +4,183 @@ require_once '../../config/database.php';
 require_once '../../includes/funciones.php';
 require_once '../../includes/slots.php';
 require_once '../../includes/cancelaciones.php';
-date_default_timezone_set('America/La_Paz'); // Cambia según tu ubicación
+date_default_timezone_set('America/La_Paz');
 
-requerirRol('odontologo');
+// Verificar autenticación
+if (!estaLogueado()) {
+    redirigir('/ecodent/public/login.php');
+}
+
+// PERMITIR ACCESO A ADMIN Y ODONTÓLOGO
+$es_admin = esAdmin();
+$es_odontologo = esOdontologo();
+
+if (!$es_admin && !$es_odontologo) {
+    $_SESSION['error'] = "No tienes permisos para acceder a esta página";
+    redirigir('/ecodent/public/dashboard.php');
+}
 
 $id_usuario = $_SESSION['id_usuario'];
 
-$stmt = $conexion->prepare("SELECT id_odontologo, duracion_cita_min, color_calendario FROM odontologos WHERE id_usuario = ?");
+// OBTENER INFORMACIÓN DEL ODONTÓLOGO
+$stmt = $conexion->prepare("SELECT id_odontologo, duracion_cita_min, color_calendario, activo, especialidad_principal FROM odontologos WHERE id_usuario = ?");
+if (!$stmt) {
+    die("Error en la consulta: " . $conexion->error);
+}
+
 $stmt->bind_param("i", $id_usuario);
 $stmt->execute();
 $resultado = $stmt->get_result();
+
+// Variable para almacenar el odontólogo seleccionado
+$odontologo = null;
+$id_odontologo = null;
+
+// Si es ADMIN y no tiene odontólogo asociado, mostrar mensaje especial
+if ($resultado->num_rows === 0) {
+    if ($es_admin) {
+        // Procesar la selección del odontólogo
+        if (isset($_GET['ver_odontologo']) && !empty($_GET['ver_odontologo'])) {
+            $id_odontologo_seleccionado = (int)$_GET['ver_odontologo'];
+            
+            // Verificar que el odontólogo existe
+            $check = $conexion->prepare("SELECT id_odontologo, duracion_cita_min, color_calendario, activo, especialidad_principal FROM odontologos WHERE id_odontologo = ? AND activo = 1");
+            $check->bind_param("i", $id_odontologo_seleccionado);
+            $check->execute();
+            $check_result = $check->get_result();
+            
+            if ($check_result->num_rows > 0) {
+                $odontologo = $check_result->fetch_assoc();
+                $id_odontologo = $odontologo['id_odontologo'];
+                $_SESSION['admin_viendo_odontologo'] = $id_odontologo;
+                // Saltar a mostrar calendario
+                goto mostrar_calendario;
+            } else {
+                $error_seleccion = "El odontólogo seleccionado no existe o está inactivo.";
+            }
+        }
+        
+        // Mostrar mensaje amigable para admin
+        require_once '../../includes/header.php';
+        ?>
+        <div class="container mt-5">
+            <div class="alert alert-warning">
+                <h4><i class="bi bi-exclamation-triangle"></i> No tienes un perfil de odontólogo asociado</h4>
+                <p>Como administrador, puedes:</p>
+                <ul>
+                    <li><strong>Opción 1:</strong> <a href="/ecodent/public/admin/gestion_odontologos.php" class="alert-link">Crear un odontólogo</a> con tu usuario actual (ID Usuario: <?php echo $id_usuario; ?>)</li>
+                    <li><strong>Opción 2:</strong> Ver el calendario de otro odontólogo seleccionándolo a continuación:</li>
+                </ul>
+                
+                <?php if (isset($error_seleccion)): ?>
+                    <div class="alert alert-danger"><?php echo $error_seleccion; ?></div>
+                <?php endif; ?>
+                
+                <form method="GET" action="" class="mt-3">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <select name="ver_odontologo" class="form-select" required>
+                                <option value="">Selecciona un odontólogo para ver su calendario</option>
+                                <?php
+                                $odontologos_lista = $conexion->query("
+                                    SELECT o.id_odontologo, u.nombre_completo, o.especialidad_principal 
+                                    FROM odontologos o 
+                                    JOIN usuarios u ON o.id_usuario = u.id_usuario 
+                                    WHERE o.activo = 1
+                                    ORDER BY u.nombre_completo
+                                ");
+                                while($od = $odontologos_lista->fetch_assoc()) {
+                                    $selected = (isset($_GET['ver_odontologo']) && $_GET['ver_odontologo'] == $od['id_odontologo']) ? 'selected' : '';
+                                    echo "<option value='{$od['id_odontologo']}' $selected>{$od['nombre_completo']} - {$od['especialidad_principal']}</option>";
+                                }
+                                ?>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <button type="submit" class="btn btn-primary w-100">Ver Calendario</button>
+                        </div>
+                    </div>
+                </form>
+                
+                <hr>
+                <a href="/ecodent/public/admin/dashboard.php" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> Volver al Dashboard
+                </a>
+            </div>
+        </div>
+        <?php
+        require_once '../../includes/footer.php';
+        exit;
+    } else {
+        $_SESSION['error'] = "No se encontró información del odontólogo. Contacte al administrador.";
+        redirigir('/ecodent/public/dashboard.php');
+    }
+}
+
+// Si llegamos aquí, el usuario tiene odontólogo asociado
 $odontologo = $resultado->fetch_assoc();
-$id_odontologo = $odontologo['id_odontologo'];
+
+mostrar_calendario:
+
+// Si es ADMIN y está viendo otro odontólogo
+if ($es_admin && isset($_GET['ver_odontologo']) && is_numeric($_GET['ver_odontologo'])) {
+    $id_odontologo_temp = (int)$_GET['ver_odontologo'];
+    // Verificar que existe
+    $check = $conexion->prepare("SELECT id_odontologo, duracion_cita_min, color_calendario, activo, especialidad_principal FROM odontologos WHERE id_odontologo = ?");
+    $check->bind_param("i", $id_odontologo_temp);
+    $check->execute();
+    $check_result = $check->get_result();
+    if ($check_result->num_rows > 0) {
+        $odontologo_ver = $check_result->fetch_assoc();
+        $id_odontologo = $odontologo_ver['id_odontologo'];
+        $odontologo = $odontologo_ver;
+        $_SESSION['admin_viendo_odontologo'] = $id_odontologo;
+    } else {
+        $id_odontologo = $odontologo['id_odontologo'];
+    }
+} else if ($es_admin && isset($_SESSION['admin_viendo_odontologo'])) {
+    // Si ya tenía seleccionado un odontólogo anteriormente
+    $id_odontologo_temp = $_SESSION['admin_viendo_odontologo'];
+    $check = $conexion->prepare("SELECT id_odontologo, duracion_cita_min, color_calendario, activo, especialidad_principal FROM odontologos WHERE id_odontologo = ?");
+    $check->bind_param("i", $id_odontologo_temp);
+    $check->execute();
+    $check_result = $check->get_result();
+    if ($check_result->num_rows > 0) {
+        $odontologo_ver = $check_result->fetch_assoc();
+        $id_odontologo = $odontologo_ver['id_odontologo'];
+        $odontologo = $odontologo_ver;
+    } else {
+        $id_odontologo = $odontologo['id_odontologo'];
+        unset($_SESSION['admin_viendo_odontologo']);
+    }
+} else {
+    $id_odontologo = $odontologo['id_odontologo'];
+}
+
+// Verificar si el odontólogo está activo
+if ($odontologo['activo'] != 1 && !$es_admin) {
+    $_SESSION['error'] = "Tu cuenta de odontólogo está desactivada. Contacta al administrador.";
+    redirigir('/ecodent/public/dashboard.php');
+}
+
+// Si el admin quiere resetear y ver su propio calendario (si tiene)
+if ($es_admin && isset($_GET['reset']) && $_GET['reset'] == 1) {
+    unset($_SESSION['admin_viendo_odontologo']);
+    redirigir('/ecodent/public/odontologo/calendario.php');
+}
 
 // DESBLOQUEO DE SLOT
 if (isset($_GET['desbloquear']) && isset($_GET['fecha']) && isset($_GET['hora'])) {
     $fecha = $_GET['fecha'];
     $hora  = $_GET['hora'];
-    if (desbloquearSlot($id_odontologo, $fecha, $hora, $conexion)) {
-        $_SESSION['exito'] = 'Slot desbloqueado exitosamente.';
+    if (function_exists('desbloquearSlot')) {
+        if (desbloquearSlot($id_odontologo, $fecha, $hora, $conexion)) {
+            $_SESSION['exito'] = 'Slot desbloqueado exitosamente.';
+        } else {
+            $_SESSION['error'] = 'Error al desbloquear el slot.';
+        }
     } else {
-        $_SESSION['error'] = 'Error al desbloquear el slot.';
+        $_SESSION['error'] = 'Función desbloquearSlot no disponible.';
     }
     redirigir('/ecodent/public/odontologo/calendario.php');
 }
@@ -61,19 +217,22 @@ $stmt_citas = $conexion->prepare(
      WHERE c.id_odontologo = ? AND c.fecha_cita BETWEEN ? AND ?
      ORDER BY c.hora_cita ASC"
 );
-$stmt_citas->bind_param("iss", $id_odontologo, $primer_dia, $ultimo_dia);
-$stmt_citas->execute();
-$res_citas = $stmt_citas->get_result();
+if ($stmt_citas) {
+    $stmt_citas->bind_param("iss", $id_odontologo, $primer_dia, $ultimo_dia);
+    $stmt_citas->execute();
+    $res_citas = $stmt_citas->get_result();
 
-// Organizar: contar por día y ver si hay alguna confirmada/programada
-$citas_por_dia = [];
-while ($row = $res_citas->fetch_assoc()) {
-    $d = (int)$row['dia'];
-    if (!isset($citas_por_dia[$d])) $citas_por_dia[$d] = ['total' => 0, 'activas' => 0];
-    $citas_por_dia[$d]['total']++;
-    if (in_array($row['estado'], ['programada', 'confirmada'])) {
-        $citas_por_dia[$d]['activas']++;
+    $citas_por_dia = [];
+    while ($row = $res_citas->fetch_assoc()) {
+        $d = (int)$row['dia'];
+        if (!isset($citas_por_dia[$d])) $citas_por_dia[$d] = ['total' => 0, 'activas' => 0];
+        $citas_por_dia[$d]['total']++;
+        if (in_array($row['estado'], ['programada', 'confirmada'])) {
+            $citas_por_dia[$d]['activas']++;
+        }
     }
+} else {
+    $citas_por_dia = [];
 }
 
 // BLOQUEOS DEL MES
@@ -83,13 +242,17 @@ $stmt_bloqueos = $conexion->prepare(
      WHERE id_odontologo = ? AND fecha BETWEEN ? AND ?
      GROUP BY DAY(fecha)"
 );
-$stmt_bloqueos->bind_param("iss", $id_odontologo, $primer_dia, $ultimo_dia);
-$stmt_bloqueos->execute();
-$res_bloqueos = $stmt_bloqueos->get_result();
+if ($stmt_bloqueos) {
+    $stmt_bloqueos->bind_param("iss", $id_odontologo, $primer_dia, $ultimo_dia);
+    $stmt_bloqueos->execute();
+    $res_bloqueos = $stmt_bloqueos->get_result();
 
-$bloqueos_por_dia = [];
-while ($row = $res_bloqueos->fetch_assoc()) {
-    $bloqueos_por_dia[(int)$row['dia']] = (int)$row['total'];
+    $bloqueos_por_dia = [];
+    while ($row = $res_bloqueos->fetch_assoc()) {
+        $bloqueos_por_dia[(int)$row['dia']] = (int)$row['total'];
+    }
+} else {
+    $bloqueos_por_dia = [];
 }
 
 // GENERAR CALENDARIO
@@ -101,40 +264,40 @@ $hoy                  = date('Y-m-d');
 
 require_once '../../includes/header.php';
 
+// Mensajes de sesión
+if (isset($_SESSION['exito'])) { 
+    $exito = $_SESSION['exito']; 
+    unset($_SESSION['exito']); 
+}
+if (isset($_SESSION['error'])) { 
+    $error = $_SESSION['error']; 
+    unset($_SESSION['error']); 
+}
 
-if (isset($_SESSION['exito'])) { $exito = $_SESSION['exito']; unset($_SESSION['exito']); }
-if (isset($_SESSION['error'])) { $error = $_SESSION['error']; unset($_SESSION['error']); }
-?>
-<?php if (isset($_SESSION['whatsapp_pendiente'])): 
-    $wp = $_SESSION['whatsapp_pendiente'];
-    // Limpiar número: quitar espacios, guiones, agregar código Bolivia +591
-    $telefono_limpio = preg_replace('/[^0-9]/', '', $wp['telefono']);
-    if (strlen($telefono_limpio) == 8) {
-        $telefono_limpio = '591' . $telefono_limpio; // Bolivia
+// Mostrar banner si admin está viendo otro odontólogo
+if ($es_admin && isset($_SESSION['admin_viendo_odontologo']) && $_SESSION['admin_viendo_odontologo'] != $odontologo['id_odontologo']) {
+    $stmt_nombre = $conexion->prepare("
+        SELECT u.nombre_completo 
+        FROM odontologos o 
+        JOIN usuarios u ON o.id_usuario = u.id_usuario 
+        WHERE o.id_odontologo = ?
+    ");
+    $stmt_nombre->bind_param("i", $_SESSION['admin_viendo_odontologo']);
+    $stmt_nombre->execute();
+    $nombre_result = $stmt_nombre->get_result();
+    if ($nombre_odontologo = $nombre_result->fetch_assoc()) {
+        ?>
+        <div class="alert alert-info alert-dismissible fade show">
+            <i class="bi bi-eye"></i> Estás viendo el calendario de: <strong><?php echo htmlspecialchars($nombre_odontologo['nombre_completo']); ?></strong>
+            <a href="/ecodent/public/odontologo/calendario.php?reset=1" class="float-end">Ver mi calendario</a>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <?php
     }
-    $mensaje_encoded = urlencode($wp['mensaje']);
-    $link_whatsapp = "https://wa.me/{$telefono_limpio}?text={$mensaje_encoded}";
-    unset($_SESSION['whatsapp_pendiente']); // Limpiar sesión
+}
 ?>
-<div class="alert alert-success alert-dismissible fade show" role="alert">
-    <h5><i class="bi bi-check-circle-fill"></i> Cita cancelada exitosamente</h5>
-    <p class="mb-2">El slot quedó bloqueado y el email fue registrado para envío.</p>
-    <p class="mb-2"><strong>¿Deseas notificar también por WhatsApp?</strong></p>
-    <a href="<?php echo $link_whatsapp; ?>" 
-       target="_blank" 
-       class="btn btn-success btn-lg">
-        <i class="bi bi-whatsapp"></i> Enviar WhatsApp al paciente
-    </a>
-    <small class="d-block mt-2 text-muted">
-        El mensaje ya está escrito. Solo haz click en Enviar dentro de WhatsApp.
-    </small>
-    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-</div>
-<?php 
-endif; 
-?>
+
 <style>
-/* ─── Celda del calendario ─── */
 .calendario-dia {
     height: 110px;
     border: 1px solid #dee2e6;
@@ -158,8 +321,6 @@ endif;
     background: #f8f9fa;
     box-shadow: none;
 }
-
-/* ─── Día actual ─── */
 .calendario-dia.hoy {
     background: #e3f2fd !important;
     border: 2px solid #1976d2 !important;
@@ -175,24 +336,18 @@ endif;
     align-items: center; justify-content: center;
     font-size: .85rem; font-weight: 700;
 }
-
-/* ─── Número del día ─── */
 .dia-num {
     font-weight: 700;
     font-size: .9rem;
     color: #343a40;
     line-height: 1;
 }
-
-/* ─── Contenido de la celda ─── */
 .celda-body {
     margin-top: 4px;
     display: flex;
     flex-direction: column;
     gap: 3px;
 }
-
-/* Badges de conteo */
 .badge-citas {
     font-size: .7rem;
     padding: 2px 7px;
@@ -211,8 +366,6 @@ endif;
     display: inline-block;
     width: fit-content;
 }
-
-/* Botón "Ver citas" */
 .btn-ver-citas {
     font-size: .68rem;
     padding: 3px 8px;
@@ -230,19 +383,7 @@ endif;
     background: #0d6efd;
     color: #fff;
 }
-
-/* Punto de color por tipo de cita */
-.punto-estado {
-    display: inline-block;
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    margin-right: 2px;
-}
-
-/* ─── Modal ─── */
 .modal-citas-header { background: linear-gradient(135deg,#1565c0,#1976d2); }
-
-/* ─── Slots timeline en modal ─── */
 .slot-row {
     display: flex;
     align-items: stretch;
@@ -327,7 +468,10 @@ endif;
 <div class="row mb-3">
     <div class="col-md-8">
         <h1><i class="bi bi-calendar-week"></i> Mi Calendario — <?php echo date('d/m/Y'); ?></h1>
-        <p class="mb-0">Bienvenido, <strong><?php echo htmlspecialchars($_SESSION['nombre_completo']); ?></strong></p>
+        <p class="mb-0">Bienvenido, <strong><?php echo htmlspecialchars($_SESSION['nombre_completo'] ?? 'Odontólogo'); ?></strong></p>
+        <?php if (isset($odontologo['especialidad_principal'])): ?>
+            <small class="text-muted">Especialidad: <?php echo htmlspecialchars($odontologo['especialidad_principal']); ?> | Duración de cita: <?php echo $odontologo['duracion_cita_min']; ?> min</small>
+        <?php endif; ?>
     </div>
     <div class="col-md-4 text-end d-flex gap-2 justify-content-end align-items-start">
         <a href="configurar_horarios.php" class="btn btn-primary btn-sm">
@@ -341,13 +485,13 @@ endif;
 
 <?php if (isset($exito)): ?>
     <div class="alert alert-success alert-dismissible fade show">
-        <i class="bi bi-check-circle-fill"></i> <?php echo $exito; ?>
+        <i class="bi bi-check-circle-fill"></i> <?php echo htmlspecialchars($exito); ?>
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
 <?php endif; ?>
 <?php if (isset($error)): ?>
     <div class="alert alert-danger alert-dismissible fade show">
-        <i class="bi bi-exclamation-triangle-fill"></i> <?php echo $error; ?>
+        <i class="bi bi-exclamation-triangle-fill"></i> <?php echo htmlspecialchars($error); ?>
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
 <?php endif; ?>
@@ -372,7 +516,7 @@ endif;
 <div class="table-responsive">
     <table class="table table-bordered mb-0" style="table-layout:fixed;">
         <thead class="table-dark">
-            <tr>
+            32
                 <?php foreach ($dias_semana as $dn): ?>
                     <th class="text-center" style="width:14.28%"><?php echo $dn; ?></th>
                 <?php endforeach; ?>
@@ -452,13 +596,10 @@ endif;
     </span>
 </div>
 
-<!-- ══════════════════════════════════════════
-     MODAL DE HORARIOS DEL DÍA
-════════════════════════════════════════════ -->
+<!-- MODAL DE HORARIOS DEL DÍA -->
 <div class="modal fade" id="modalHorariosDia" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
-
             <div class="modal-header modal-citas-header text-white py-3">
                 <div>
                     <h5 class="modal-title mb-0">
@@ -468,50 +609,82 @@ endif;
                 </div>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-
             <div class="modal-body p-0">
                 <div id="modal-slots-container" style="min-height:200px;">
-                    <!-- cargado vía AJAX -->
                     <div class="d-flex justify-content-center align-items-center" style="height:200px;">
                         <div class="spinner-border text-primary"></div>
                     </div>
                 </div>
             </div>
-
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
                 <a href="#" id="modal-btn-agendar" class="btn btn-primary btn-sm">
                     <i class="bi bi-plus-circle"></i> Agendar cita
                 </a>
             </div>
-
         </div>
     </div>
 </div>
 
 <script>
 function abrirModal(fecha) {
+    // Obtener el id_odontologo actual
+    var idOdontologo = null;
+    
+    // 1. Verificar si viene en la URL (ver_odontologo)
+    var urlParams = new URLSearchParams(window.location.search);
+    var urlId = urlParams.get('ver_odontologo');
+    if (urlId && !isNaN(urlId)) {
+        idOdontologo = urlId;
+    }
+    
+    // 2. Si no, verificar si está en sesión (admin_viendo_odontologo)
+    <?php if (isset($_SESSION['admin_viendo_odontologo']) && $_SESSION['admin_viendo_odontologo']): ?>
+        if (!idOdontologo) {
+            idOdontologo = <?php echo $_SESSION['admin_viendo_odontologo']; ?>;
+        }
+    <?php endif; ?>
+    
+    // 3. Si es admin y no hay id_odontologo, mostrar mensaje
+    <?php if ($es_admin): ?>
+        if (!idOdontologo) {
+            alert('Primero selecciona un odontólogo para ver sus citas');
+            return false;
+        }
+    <?php endif; ?>
+    
     // Formatear fecha para mostrar: YYYY-MM-DD → DD/MM/YYYY
     var p = fecha.split('-');
     document.getElementById('modal-fecha-label').textContent = p[2] + '/' + p[1] + '/' + p[0];
-    document.getElementById('modal-btn-agendar').href = 'agendar_cita.php?fecha=' + fecha;
-
+    
+    // Construir URL para agendar cita con el id_odontologo
+    var urlAgendar = 'agendar_cita.php?fecha=' + fecha;
+    if (idOdontologo) {
+        urlAgendar += '&id_odontologo=' + idOdontologo;
+    }
+    document.getElementById('modal-btn-agendar').href = urlAgendar;
+    
     // Spinner mientras carga
     document.getElementById('modal-slots-container').innerHTML =
         '<div class="d-flex justify-content-center align-items-center" style="height:200px;">' +
         '<div class="spinner-border text-primary"></div></div>';
-
+    
     // Abrir modal
     new bootstrap.Modal(document.getElementById('modalHorariosDia')).show();
-
-    // Cargar slots vía AJAX
+    
+    // Cargar slots vía AJAX - PASAR EL ID_ODONTOLOGO
+    var urlSlots = 'citas_por_dia.php?fecha=' + fecha + '&t=' + Date.now();
+    if (idOdontologo) {
+        urlSlots += '&id_odontologo=' + idOdontologo;
+    }
+    
     var xhr = new XMLHttpRequest();
     xhr.onreadystatechange = function() {
         if (this.readyState === 4 && this.status === 200) {
             document.getElementById('modal-slots-container').innerHTML = this.responseText;
         }
     };
-    xhr.open('GET', 'citas_por_dia.php?fecha=' + fecha + '&t=' + Date.now(), true);
+    xhr.open('GET', urlSlots, true);
     xhr.send();
 }
 </script>

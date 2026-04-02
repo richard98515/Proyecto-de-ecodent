@@ -4,20 +4,100 @@
 
 require_once '../../config/database.php';
 require_once '../../includes/funciones.php';
-date_default_timezone_set('America/La_Paz'); // Cambia según tu ubicación
+date_default_timezone_set('America/La_Paz');
 
-if (!estaLogueado() || !esOdontologo()) {
+// Verificar autenticación
+if (!estaLogueado()) {
     echo '<div class="alert alert-danger m-3">No autorizado</div>';
     exit;
 }
 
-$id_usuario = $_SESSION['id_usuario'];
+// Obtener el rol del usuario
+$es_admin = esAdmin();
+$es_odontologo = esOdontologo();
 
-$stmt = $conexion->prepare("SELECT id_odontologo FROM odontologos WHERE id_usuario = ?");
-$stmt->bind_param("i", $id_usuario);
-$stmt->execute();
-$odontologo    = $stmt->get_result()->fetch_assoc();
-$id_odontologo = $odontologo['id_odontologo'];
+// Verificar permisos: solo admin u odontólogo pueden acceder
+if (!$es_admin && !$es_odontologo) {
+    echo '<div class="alert alert-danger m-3">No tienes permisos para acceder</div>';
+    exit;
+}
+
+$id_usuario = $_SESSION['id_usuario'];
+$id_odontologo = null;
+
+// Solo si es odontólogo, obtener su ID
+if ($es_odontologo) {
+    $stmt = $conexion->prepare("SELECT id_odontologo FROM odontologos WHERE id_usuario = ?");
+    $stmt->bind_param("i", $id_usuario);
+    $stmt->execute();
+    $resultado = $stmt->get_result();
+    
+    if ($resultado->num_rows > 0) {
+        $odontologo_data = $resultado->fetch_assoc();
+        $id_odontologo = $odontologo_data['id_odontologo'];
+    } else {
+        echo '<div class="alert alert-danger m-3">No se encontró información del odontólogo</div>';
+        exit;
+    }
+}
+
+// Si es admin y viene un odontólogo específico por GET, usar ese
+if ($es_admin && isset($_GET['id_odontologo']) && is_numeric($_GET['id_odontologo'])) {
+    $id_odontologo = (int)$_GET['id_odontologo'];
+    // Verificar que existe
+    $check = $conexion->prepare("SELECT id_odontologo FROM odontologos WHERE id_odontologo = ? AND activo = 1");
+    $check->bind_param("i", $id_odontologo);
+    $check->execute();
+    if ($check->get_result()->num_rows === 0) {
+        echo '<div class="alert alert-warning m-3">El odontólogo seleccionado no existe o está inactivo</div>';
+        exit;
+    }
+}
+
+// Si es admin pero no hay id_odontologo, mostrar selector
+if ($es_admin && !$id_odontologo) {
+    // Mostrar selector de odontólogo
+    ?>
+    <div class="alert alert-info m-3">
+        <i class="bi bi-info-circle"></i> Vista de administrador - Selecciona un odontólogo para ver su agenda
+    </div>
+    
+    <div class="m-3">
+        <form method="GET" action="" class="row g-3">
+            <div class="col-md-10">
+                <select name="id_odontologo" class="form-select" required>
+                    <option value="">Selecciona un odontólogo...</option>
+                    <?php
+                    $odontologos_lista = $conexion->query("
+                        SELECT o.id_odontologo, u.nombre_completo, o.especialidad_principal 
+                        FROM odontologos o 
+                        JOIN usuarios u ON o.id_usuario = u.id_usuario 
+                        WHERE o.activo = 1
+                        ORDER BY u.nombre_completo
+                    ");
+                    while($od = $odontologos_lista->fetch_assoc()) {
+                        echo "<option value='{$od['id_odontologo']}'>{$od['nombre_completo']} - {$od['especialidad_principal']}</option>";
+                    }
+                    ?>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="bi bi-eye"></i> Ver Agenda
+                </button>
+            </div>
+            <input type="hidden" name="fecha" value="<?php echo htmlspecialchars($_GET['fecha'] ?? date('Y-m-d')); ?>">
+        </form>
+    </div>
+    <?php
+    exit;
+}
+
+// Si llegamos aquí, tenemos id_odontologo
+if (!$id_odontologo) {
+    echo '<div class="alert alert-danger m-3">No se pudo determinar el odontólogo</div>';
+    exit;
+}
 
 if (!isset($_GET['fecha'])) {
     echo '<div class="alert alert-warning m-3">No se especificó la fecha</div>';
@@ -192,7 +272,6 @@ function renderizarTarjetaCita($entry, $fecha, $es_la_unica) {
 
     $c  = $entry['cita'];
     $es_inicio_cita  = $entry['es_inicio'];
-    $es_cont_cita    = !$entry['es_inicio'];
     $slot_num        = $entry['slot_num'];
     $total_slots_cita= $entry['total_slots'];
 
@@ -303,6 +382,17 @@ foreach ($slots as $s) {
             }
         }
         if ($todas_canceladas && !isset($bloqueos_map[$s])) $total_libres++;
+    }
+}
+
+// Mostrar nombre del odontólogo si es admin
+if ($es_admin) {
+    $stmt_nombre = $conexion->prepare("SELECT u.nombre_completo FROM odontologos o JOIN usuarios u ON o.id_usuario = u.id_usuario WHERE o.id_odontologo = ?");
+    $stmt_nombre->bind_param("i", $id_odontologo);
+    $stmt_nombre->execute();
+    $nombre_odonto = $stmt_nombre->get_result()->fetch_assoc();
+    if ($nombre_odonto) {
+        echo '<div class="alert alert-info m-2"><i class="bi bi-hospital"></i> Viendo agenda de: <strong>' . htmlspecialchars($nombre_odonto['nombre_completo']) . '</strong></div>';
     }
 }
 ?>
@@ -501,7 +591,7 @@ foreach ($slots as $s) {
                                 <i class="bi bi-check-circle me-1"></i>
                                 <strong>Slot disponible</strong>
                             </span>
-                            <a href="agendar_cita.php?fecha=<?php echo htmlspecialchars($fecha); ?>&hora=<?php echo $slot_hora; ?>"
+                            <a href="agendar_cita.php?fecha=<?php echo htmlspecialchars($fecha); ?>&hora=<?php echo $slot_hora; ?>&id_odontologo=<?php echo $id_odontologo; ?>"
                                class="btn btn-success btn-sm"
                                style="font-size:0.8rem;padding:5px 16px;">
                                 <i class="bi bi-plus-circle"></i> Agendar cita
@@ -518,7 +608,7 @@ foreach ($slots as $s) {
                             <i class="bi bi-check-circle me-2" style="color:#28a745;"></i>
                             <span style="font-weight:500;">Disponible para agendar</span>
                         </span>
-                        <a href="agendar_cita.php?fecha=<?php echo htmlspecialchars($fecha); ?>&hora=<?php echo $slot_hora; ?>"
+                        <a href="agendar_cita.php?fecha=<?php echo htmlspecialchars($fecha); ?>&hora=<?php echo $slot_hora; ?>&id_odontologo=<?php echo $id_odontologo; ?>"
                            class="btn btn-success btn-sm"
                            style="font-size:0.8rem;padding:6px 18px;">
                             <i class="bi bi-plus-circle"></i> Agendar cita
@@ -535,7 +625,7 @@ foreach ($slots as $s) {
 
 <!-- Botón agendar al pie -->
 <div class="text-center py-4 border-top" style="background:#f8f9fa;">
-    <a href="agendar_cita.php?fecha=<?php echo htmlspecialchars($fecha); ?>" class="btn btn-primary px-4 py-2">
+    <a href="agendar_cita.php?fecha=<?php echo htmlspecialchars($fecha); ?>&id_odontologo=<?php echo $id_odontologo; ?>" class="btn btn-primary px-4 py-2">
         <i class="bi bi-plus-circle me-2"></i> Agendar nueva cita para este día
     </a>
 </div>

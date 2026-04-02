@@ -35,4 +35,13 @@ $conexion->set_charset("utf8mb4");
 
 // Si llegamos a este punto, la conexión fue exitosa.
 // La variable $conexion ya está lista para usarse en otros archivos.
+/**
+ * FUNCIÓN: conectarBD
+ * Retorna la conexión a la base de datos
+ * @return mysqli Objeto de conexión
+ */
+function conectarBD() {
+    global $conexion;
+    return $conexion;
+}
 ?>

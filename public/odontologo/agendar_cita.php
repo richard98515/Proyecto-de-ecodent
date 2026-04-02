@@ -5,11 +5,121 @@
 
 require_once '../../config/database.php';
 require_once '../../includes/funciones.php';
-date_default_timezone_set('America/La_Paz'); // Cambia según tu ubicación
+date_default_timezone_set('America/La_Paz');
 
-requerirRol('odontologo');
+// Verificar autenticación
+if (!estaLogueado()) {
+    redirigir('/ecodent/public/login.php');
+}
+
+// Obtener el rol del usuario
+$es_admin = esAdmin();
+$es_odontologo = esOdontologo();
+
+// Verificar permisos: solo admin u odontólogo pueden acceder
+if (!$es_admin && !$es_odontologo) {
+    $_SESSION['error'] = "No tienes permisos para acceder a esta página";
+    redirigir('/ecodent/public/dashboard.php');
+}
 
 $id_usuario = $_SESSION['id_usuario'];
+$id_odontologo = null;
+
+// Solo si es odontólogo, obtener su ID
+if ($es_odontologo) {
+    $stmt = $conexion->prepare("SELECT id_odontologo, duracion_cita_min FROM odontologos WHERE id_usuario = ?");
+    $stmt->bind_param("i", $id_usuario);
+    $stmt->execute();
+    $resultado = $stmt->get_result();
+    
+    if ($resultado->num_rows > 0) {
+        $odontologo_data = $resultado->fetch_assoc();
+        $id_odontologo = $odontologo_data['id_odontologo'];
+        $duracion_slot = $odontologo_data['duracion_cita_min'];
+    } else {
+        $_SESSION['error'] = "No se encontró información del odontólogo. Contacte al administrador.";
+        redirigir('/ecodent/public/dashboard.php');
+    }
+} else {
+    // Si es admin, necesita seleccionar un odontólogo
+    $duracion_slot = 40; // Duración por defecto
+}
+
+// Si es admin y viene con id_odontologo en GET, usar ese
+if ($es_admin && isset($_GET['id_odontologo']) && is_numeric($_GET['id_odontologo'])) {
+    $id_odontologo_temp = (int)$_GET['id_odontologo'];
+    $check = $conexion->prepare("SELECT id_odontologo, duracion_cita_min FROM odontologos WHERE id_odontologo = ? AND activo = 1");
+    $check->bind_param("i", $id_odontologo_temp);
+    $check->execute();
+    $check_result = $check->get_result();
+    if ($check_result->num_rows > 0) {
+        $od_data = $check_result->fetch_assoc();
+        $id_odontologo = $od_data['id_odontologo'];
+        $duracion_slot = $od_data['duracion_cita_min'];
+    } else {
+        $_SESSION['error'] = "El odontólogo seleccionado no existe o está inactivo";
+        redirigir('/ecodent/public/odontologo/calendario.php');
+    }
+}
+
+// Si es admin y no hay id_odontologo, mostrar selector
+if ($es_admin && !$id_odontologo) {
+    require_once '../../includes/header.php';
+    ?>
+    <div class="container mt-5">
+        <div class="alert alert-warning">
+            <h4><i class="bi bi-exclamation-triangle"></i> Selecciona un odontólogo</h4>
+            <p>Como administrador, debes seleccionar para qué odontólogo deseas agendar la cita.</p>
+            
+            <form method="GET" action="" class="mt-3">
+                <div class="row">
+                    <div class="col-md-8">
+                        <select name="id_odontologo" class="form-select" required>
+                            <option value="">Selecciona un odontólogo...</option>
+                            <?php
+                            $odontologos_lista = $conexion->query("
+                                SELECT o.id_odontologo, u.nombre_completo, o.especialidad_principal 
+                                FROM odontologos o 
+                                JOIN usuarios u ON o.id_usuario = u.id_usuario 
+                                WHERE o.activo = 1
+                                ORDER BY u.nombre_completo
+                            ");
+                            while($od = $odontologos_lista->fetch_assoc()) {
+                                echo "<option value='{$od['id_odontologo']}'>{$od['nombre_completo']} - {$od['especialidad_principal']}</option>";
+                            }
+                            ?>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-calendar-plus"></i> Continuar
+                        </button>
+                    </div>
+                </div>
+                <?php if (isset($_GET['fecha'])): ?>
+                    <input type="hidden" name="fecha" value="<?php echo htmlspecialchars($_GET['fecha']); ?>">
+                <?php endif; ?>
+                <?php if (isset($_GET['hora'])): ?>
+                    <input type="hidden" name="hora" value="<?php echo htmlspecialchars($_GET['hora']); ?>">
+                <?php endif; ?>
+            </form>
+            
+            <hr>
+            <a href="/ecodent/public/odontologo/calendario.php" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Volver al Calendario
+            </a>
+        </div>
+    </div>
+    <?php
+    require_once '../../includes/footer.php';
+    exit;
+}
+
+// Si llegamos aquí pero no hay id_odontologo, error
+if (!$id_odontologo) {
+    $_SESSION['error'] = "No se pudo identificar al odontólogo";
+    redirigir('/ecodent/public/odontologo/calendario.php');
+}
 
 // --- Leer fecha y hora preseleccionada desde GET ---
 $fecha = $_GET['fecha'] ?? date('Y-m-d');
@@ -24,20 +134,10 @@ if (!$fecha_obj) {
 }
 
 // Normalizar hora a H:i:s para comparar con data-hora-inicio de los slots
-// Ejemplo: "08:00" → "08:00:00"
 $hora_pre_normalizada = null;
 if ($hora_preseleccionada) {
     $hora_pre_normalizada = date('H:i:s', strtotime($hora_preseleccionada));
 }
-
-// --- Datos del odontólogo logueado ---
-$stmt = $conexion->prepare("SELECT id_odontologo, duracion_cita_min FROM odontologos WHERE id_usuario = ?");
-$stmt->bind_param("i", $id_usuario);
-$stmt->execute();
-$resultado  = $stmt->get_result();
-$odontologo = $resultado->fetch_assoc();
-$id_odontologo = $odontologo['id_odontologo'];
-$duracion_slot = $odontologo['duracion_cita_min']; // minutos por slot, ej: 40
 
 // --- Lista de pacientes ---
 $sql_pacientes = "SELECT p.id_paciente, u.nombre_completo, u.email, u.telefono
@@ -47,11 +147,6 @@ $sql_pacientes = "SELECT p.id_paciente, u.nombre_completo, u.email, u.telefono
 $pacientes = $conexion->query($sql_pacientes);
 
 // --- Citas del día (TODOS los estados relevantes para pintar slots) ---
-// Incluimos:
-//   programada / confirmada  → ocupado   (amarillo, no se puede agendar)
-//   completada               → completada (gris, el paciente asistió, no se puede agendar)
-//   ausente                  → ausente   (morado, no se presentó, no se puede agendar)
-//   cancelada_pac / cancelada_doc → NO se incluyen (slot queda libre/verde)
 $sql_ocupados = "SELECT c.id_cita, c.hora_cita, c.hora_fin, c.motivo, c.estado,
                         u.nombre_completo as paciente
                  FROM citas c
@@ -79,7 +174,7 @@ while ($oc = $ocupados->fetch_assoc()) {
         'motivo'      => $oc['motivo'],
         'hora_inicio' => $oc['hora_cita'],
         'hora_fin'    => $oc['hora_fin'],
-        'estado'      => $oc['estado'], // 'programada'|'confirmada'|'completada'|'ausente'
+        'estado'      => $oc['estado'],
     ];
 }
 
@@ -133,32 +228,28 @@ if ($horario) {
         $hora_fin_slot    = date('H:i:s', $hora_actual + $paso);
 
         // Determinar estado visual del slot
-        // Prioridad: cita (cualquier estado) > bloqueado > disponible
         $estado_slot = 'disponible';
         $cita_info   = null;
 
         foreach ($citas_ocupadas as $cita) {
             if ($hora_actual >= $cita['inicio'] && $hora_actual < $cita['fin']) {
-                // Mapear estado de la BD al estado visual del slot
                 if ($cita['estado'] === 'completada') {
-                    $estado_slot = 'completada'; // gris neutro
+                    $estado_slot = 'completada';
                 } elseif ($cita['estado'] === 'ausente') {
-                    $estado_slot = 'ausente';    // morado apagado
+                    $estado_slot = 'ausente';
                 } else {
-                    // programada o confirmada
-                    $estado_slot = 'ocupado';    // amarillo
+                    $estado_slot = 'ocupado';
                 }
                 $cita_info = $cita;
                 break;
             }
         }
 
-        // Si sigue disponible, verificar bloqueo manual
         $bloqueo_info = null;
         if ($estado_slot === 'disponible') {
             foreach ($slots_bloqueados as $bloqueo) {
                 if ($hora_actual >= $bloqueo['inicio'] && $hora_actual < $bloqueo['fin']) {
-                    $estado_slot  = 'bloqueado'; // rojo
+                    $estado_slot  = 'bloqueado';
                     $bloqueo_info = $bloqueo;
                     break;
                 }
@@ -171,9 +262,7 @@ if ($horario) {
             'hora_fin'         => $hora_fin_slot,
             'hora_display'     => date('h:i A', $hora_actual),
             'hora_fin_display' => date('h:i A', $hora_actual + $paso),
-            // Estado: 'disponible' | 'ocupado' | 'completada' | 'ausente' | 'bloqueado'
             'estado'           => $estado_slot,
-            // Solo 'disponible' puede clickearse para agendar
             'disponible'       => $estado_slot === 'disponible',
             'info'             => $cita_info ?? $bloqueo_info,
         ];
@@ -188,6 +277,14 @@ $exito = '';
 $error = '';
 if (isset($_SESSION['exito'])) { $exito = $_SESSION['exito']; unset($_SESSION['exito']); }
 if (isset($_SESSION['error'])) { $error = $_SESSION['error']; unset($_SESSION['error']); }
+
+// Mostrar banner si es admin
+if ($es_admin) {
+    $stmt_nombre = $conexion->prepare("SELECT u.nombre_completo FROM odontologos o JOIN usuarios u ON o.id_usuario = u.id_usuario WHERE o.id_odontologo = ?");
+    $stmt_nombre->bind_param("i", $id_odontologo);
+    $stmt_nombre->execute();
+    $nombre_odonto = $stmt_nombre->get_result()->fetch_assoc();
+}
 
 require_once '../../includes/header.php';
 ?>
@@ -221,21 +318,18 @@ require_once '../../includes/header.php';
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-/* Hover solo en disponibles */
 .slot-card:hover:not(.no-click) {
     transform: translateY(-3px);
     box-shadow: 0 6px 12px rgba(0,0,0,0.15);
     border-color: #0d6efd;
 }
 
-/* ---- DISPONIBLE → verde ---- */
 .slot-card.disponible {
     background: #d1e7dd;
     border-color: #0f5132;
     color: #0f5132;
 }
 
-/* ---- OCUPADO (programada / confirmada) → amarillo ---- */
 .slot-card.ocupado {
     background: #fff3cd;
     border-color: #ffc107;
@@ -243,7 +337,6 @@ require_once '../../includes/header.php';
     cursor: not-allowed;
 }
 
-/* ---- COMPLETADA (paciente asistió) → gris neutro ---- */
 .slot-card.completada {
     background: #e2e3e5;
     border-color: #6c757d;
@@ -252,7 +345,6 @@ require_once '../../includes/header.php';
     opacity: 0.85;
 }
 
-/* ---- AUSENTE (no se presentó) → morado apagado ---- */
 .slot-card.ausente {
     background: #e8d5f5;
     border-color: #6f42c1;
@@ -261,7 +353,6 @@ require_once '../../includes/header.php';
     opacity: 0.85;
 }
 
-/* ---- BLOQUEADO manualmente → rojo ---- */
 .slot-card.bloqueado {
     background: #f8d7da;
     border-color: #dc3545;
@@ -270,10 +361,8 @@ require_once '../../includes/header.php';
     opacity: 0.85;
 }
 
-/* Deshabilitar cursor en todos los no-disponibles */
 .slot-card.no-click { cursor: not-allowed; }
 
-/* ---- SELECCIONADO → azul ---- */
 .slot-card.seleccionado {
     background: #cfe2ff;
     border-color: #0d6efd;
@@ -282,7 +371,6 @@ require_once '../../includes/header.php';
     box-shadow: 0 0 0 3px rgba(13,110,253,0.25);
 }
 
-/* Checkmark esquina superior derecha */
 .slot-card.seleccionado::after {
     content: "✓";
     position: absolute;
@@ -296,12 +384,10 @@ require_once '../../includes/header.php';
     font-size: 12px; font-weight: bold;
 }
 
-/* ---- Textos internos del slot ---- */
 .slot-hora      { font-size: 1.4rem; font-weight: bold; margin-bottom: 5px; }
 .slot-hora-fin  { font-size: 1rem; font-weight: 500; opacity: 0.9; margin-bottom: 5px; }
 .slot-estado    { font-size: 0.85rem; margin-top: 5px; }
 
-/* Badges de estado dentro del slot */
 .slot-badge-estado {
     display: inline-block;
     font-size: 0.7rem;
@@ -316,18 +402,13 @@ require_once '../../includes/header.php';
 .badge-ocupado    { background: #ffc107; color: #333; }
 .badge-bloqueado  { background: #dc3545; color: white; }
 
-/* ============================================================
-   RESUMEN INFERIOR
-   ============================================================ */
 .resumen-card {
-   /* DESPUÉS */
-background: linear-gradient(135deg,  #0288d1 100%, #0288d1 100%);
-box-shadow: 0 10px 30px rgba(2,136,209,0.25);
+    background: linear-gradient(135deg, #0288d1 100%, #0288d1 100%);
+    box-shadow: 0 10px 30px rgba(2,136,209,0.25);
     border-radius: 15px;
     padding: 20px;
     margin: 20px 0;
     color: white;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
 }
 .resumen-contenido { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; }
 .resumen-datos     { display: flex; align-items: center; gap: 25px; flex-wrap: wrap; }
@@ -357,7 +438,6 @@ box-shadow: 0 10px 30px rgba(2,136,209,0.25);
 .motivo-field:focus  { background: white; border-color: white; outline: none; color: #0288d1; }
 .motivo-field option { color: #212529; background: white; font-weight: 400; padding: 5px; }
 
-
 .btn-registrar {
     background: white; color: #667eea; border: none;
     padding: 12px 35px; font-size: 1.1rem; font-weight: 600;
@@ -367,9 +447,6 @@ box-shadow: 0 10px 30px rgba(2,136,209,0.25);
 .btn-registrar:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.3); background: #f8f9fa; }
 .btn-registrar:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* ============================================================
-   TAGS DE SELECCIONADOS
-   ============================================================ */
 .seleccionados-tags {
     background: white; border: 1px solid #dee2e6; border-radius: 10px;
     padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
@@ -382,9 +459,6 @@ box-shadow: 0 10px 30px rgba(2,136,209,0.25);
 .slot-tag i       { color: #dc3545; cursor: pointer; margin-left: 8px; }
 .slot-tag i:hover { color: #b02a37; }
 
-/* ============================================================
-   LEYENDA
-   ============================================================ */
 .legend-badge     { display: inline-block; padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; margin-right: 8px; margin-bottom: 6px; font-weight: 500; }
 .badge-disponible { background: #d1e7dd; color: #0f5132; border: 1px solid #0f5132; }
 .badge-ocup       { background: #fff3cd; color: #856404; border: 1px solid #ffc107; }
@@ -401,9 +475,14 @@ box-shadow: 0 10px 30px rgba(2,136,209,0.25);
         <div class="col-md-8">
             <h1><i class="bi bi-calendar-plus"></i> Agendar Procedimiento</h1>
             <p class="lead">Selecciona los slots que ocupará el procedimiento</p>
+            <?php if ($es_admin && isset($nombre_odonto)): ?>
+                <div class="alert alert-info">
+                    <i class="bi bi-hospital"></i> Agendando para: <strong><?php echo htmlspecialchars($nombre_odonto['nombre_completo']); ?></strong>
+                </div>
+            <?php endif; ?>
         </div>
         <div class="col-md-4 text-end">
-            <a href="calendario.php" class="btn btn-primary">
+            <a href="calendario.php<?php echo $es_admin && $id_odontologo ? '?ver_odontologo=' . $id_odontologo : ''; ?>" class="btn btn-primary">
                 <i class="bi bi-calendar-week"></i> Ver Calendario
             </a>
         </div>
@@ -423,7 +502,7 @@ box-shadow: 0 10px 30px rgba(2,136,209,0.25);
         </div>
     <?php endif; ?>
 
-    <!-- Leyenda actualizada con los 6 estados -->
+    <!-- Leyenda -->
     <div class="row mb-4">
         <div class="col-12">
             <span class="legend-badge badge-disponible"><i class="bi bi-check-circle"></i> Disponible</span>
@@ -502,9 +581,7 @@ box-shadow: 0 10px 30px rgba(2,136,209,0.25);
                         <?php else: ?>
                             <div class="slots-container">
                                 <?php foreach ($slots_dia as $slot):
-                                    // Clase CSS = estado del slot (disponible|ocupado|completada|ausente|bloqueado)
                                     $clase_estado = $slot['estado'];
-                                    // Los no-disponibles reciben clase extra para cursor
                                     $clase_extra  = $slot['disponible'] ? '' : 'no-click';
                                 ?>
                                     <div class="slot-card <?php echo $clase_estado . ' ' . $clase_extra; ?>"
@@ -523,13 +600,10 @@ box-shadow: 0 10px 30px rgba(2,136,209,0.25);
                                          data-hora-display="<?php echo $slot['hora_display']; ?>"
                                          data-hora-fin-display="<?php echo $slot['hora_fin_display']; ?>">
 
-                                        <!-- Hora de inicio del slot -->
                                         <div class="slot-hora"><?php echo $slot['hora_display']; ?></div>
-                                        <!-- Hora de fin del slot -->
                                         <div class="slot-hora-fin">- <?php echo $slot['hora_fin_display']; ?></div>
 
                                         <?php if ($slot['estado'] === 'completada' && $slot['info']): ?>
-                                            <!-- Paciente que asistió → gris con badge "Asistió" -->
                                             <div class="slot-estado">
                                                 <i class="bi bi-person"></i>
                                                 <?php echo htmlspecialchars(substr($slot['info']['paciente'], 0, 15)); ?>
@@ -537,9 +611,7 @@ box-shadow: 0 10px 30px rgba(2,136,209,0.25);
                                             <span class="slot-badge-estado badge-completada">
                                                 <i class="bi bi-check2-circle"></i> Asistió
                                             </span>
-
                                         <?php elseif ($slot['estado'] === 'ausente' && $slot['info']): ?>
-                                            <!-- Paciente que no se presentó → morado con badge "No asistió" -->
                                             <div class="slot-estado">
                                                 <i class="bi bi-person"></i>
                                                 <?php echo htmlspecialchars(substr($slot['info']['paciente'], 0, 15)); ?>
@@ -547,9 +619,7 @@ box-shadow: 0 10px 30px rgba(2,136,209,0.25);
                                             <span class="slot-badge-estado badge-ausente">
                                                 <i class="bi bi-person-x"></i> No asistió
                                             </span>
-
                                         <?php elseif ($slot['estado'] === 'ocupado' && $slot['info']): ?>
-                                            <!-- Cita programada/confirmada → amarillo con nombre y motivo -->
                                             <div class="slot-estado">
                                                 <i class="bi bi-person"></i>
                                                 <?php echo htmlspecialchars(substr($slot['info']['paciente'], 0, 15)); ?>
@@ -557,15 +627,12 @@ box-shadow: 0 10px 30px rgba(2,136,209,0.25);
                                             <div class="slot-estado" style="font-size:10px;">
                                                 <?php echo substr($slot['info']['motivo'] ?? '', 0, 20); ?>
                                             </div>
-
                                         <?php elseif ($slot['estado'] === 'bloqueado' && $slot['info']): ?>
-                                            <!-- Bloqueado manualmente → rojo con motivo -->
                                             <div class="slot-estado">
                                                 <i class="bi bi-lock"></i>
                                                 <?php echo substr($slot['info']['motivo'] ?? 'Bloqueado', 0, 20); ?>
                                             </div>
                                         <?php endif; ?>
-
                                     </div>
                                 <?php endforeach; ?>
                             </div>
@@ -619,8 +686,7 @@ box-shadow: 0 10px 30px rgba(2,136,209,0.25);
                                 <i class="bi bi-hourglass"></i>
                                 <strong>Duración:</strong> <span id="resumenDuracion">---</span>
                             </div>
-                            <!--para selecionar el motivo de la cita-->
-                           <select class="motivo-field" id="motivoCita" size="1" style="border-radius:12px; max-height:45px; overflow-y:auto;">
+                            <select class="motivo-field" id="motivoCita" size="1" style="border-radius:12px; max-height:45px; overflow-y:auto;">
                                 <option value="" disabled selected>Selecciona un motivo...</option>
                                 <option value="consulta_general">Consulta general</option>
                                 <option value="limpieza">Limpieza dental</option>
@@ -637,10 +703,9 @@ box-shadow: 0 10px 30px rgba(2,136,209,0.25);
                             </select>
                             <button class="btn-registrar" id="btnAgendar"
                                 onclick="mostrarModalConfirmacion()" disabled>
-                            <i class="bi bi-calendar-check"></i> Agendar Procedimiento
-                        </button>
+                                <i class="bi bi-calendar-check"></i> Agendar Procedimiento
+                            </button>
                         </div>
-                        
                     </div>
                 </div>
             </div>
@@ -654,8 +719,7 @@ box-shadow: 0 10px 30px rgba(2,136,209,0.25);
         </div>
     <?php endif; ?>
 
-</div><!-- /container-fluid -->
-
+</div>
 
 <!-- Modal de confirmación -->
 <div class="modal fade" id="modalConfirmacion" tabindex="-1">
@@ -673,7 +737,7 @@ box-shadow: 0 10px 30px rgba(2,136,209,0.25);
                 </div>
                 <table class="table table-bordered">
                     <tr><th style="width:30%;">Paciente:</th>     <td id="modalPaciente"></td></tr>
-                    <tr><th>Fecha:</th>        <td><?php echo date('d/m/Y', strtotime($fecha)); ?></td></tr>
+                    <tr><th>Fecha:</th>         <td><?php echo date('d/m/Y', strtotime($fecha)); ?></td></tr>
                     <tr><th>Horario:</th>      <td id="modalHorario"></td></tr>
                     <tr><th>Duración:</th>     <td id="modalDuracion"></td></tr>
                     <tr><th>Procedimiento:</th><td id="modalMotivo"></td></tr>
@@ -693,7 +757,7 @@ box-shadow: 0 10px 30px rgba(2,136,209,0.25);
     </div>
 </div>
 
-<!-- Formulario oculto que se envía al confirmar -->
+<!-- Formulario oculto -->
 <form id="formAgendarCompuesta" method="POST"
       action="procesar_agendar_compuesta.php" style="display:none;">
     <input type="hidden" name="token_csrf"     value="<?php echo $token_csrf; ?>">
@@ -703,92 +767,65 @@ box-shadow: 0 10px 30px rgba(2,136,209,0.25);
     <input type="hidden" name="hora_inicio"    id="hiddenHoraInicio">
     <input type="hidden" name="hora_fin"       id="hiddenHoraFin">
     <input type="hidden" name="slots_ocupados" id="hiddenSlotsOcupados">
+    <input type="hidden" name="id_odontologo"  value="<?php echo $id_odontologo; ?>">
 </form>
 
-
 <script>
-// ============================================================
-// ESTADO GLOBAL
-// ============================================================
-let slotsSeleccionados = []; // Slots elegidos por el usuario en esta sesión
+let slotsSeleccionados = [];
 
-// ============================================================
-// UTILIDADES
-// ============================================================
-
-/** Ordena slots de menor a mayor por timestamp */
 function ordenarSlotsPorHora(slots) {
     return slots.sort((a, b) => a.timestamp - b.timestamp);
 }
 
-/** Redirige con la nueva fecha del datepicker */
 function cambiarFecha() {
     let fecha = document.getElementById('fechaSelector').value;
-    window.location.href = 'agendar_cita.php?fecha=' + fecha;
+    let url = 'agendar_cita.php?fecha=' + fecha;
+    <?php if ($es_admin && $id_odontologo): ?>
+        url += '&id_odontologo=<?php echo $id_odontologo; ?>';
+    <?php endif; ?>
+    window.location.href = url;
 }
 
-/**
- * Verifica que todos los slots seleccionados sean consecutivos (sin huecos).
- * Duración del slot en segundos viene de PHP.
- */
 function sonSlotsConsecutivos(slots) {
     if (slots.length <= 1) return true;
     let ordenados   = ordenarSlotsPorHora([...slots]);
-    let duracionSeg = <?php echo $duracion_slot * 60; ?>; // PHP → JS
+    let duracionSeg = <?php echo $duracion_slot * 60; ?>;
     for (let i = 0; i < ordenados.length - 1; i++) {
         if (ordenados[i].timestamp + duracionSeg !== ordenados[i + 1].timestamp) {
-            return false; // Hay un hueco
+            return false;
         }
     }
     return true;
 }
 
-// ============================================================
-// MANEJO DE SELECCIÓN
-// ============================================================
-
-/**
- * Alterna la selección de un slot.
- * Si disponible === false el click no hace nada (seguridad en JS además del CSS).
- */
 function toggleSlot(timestamp, horaInicio, horaFin, horaDisplay, horaFinDisplay, disponible) {
-    if (!disponible) return; // ocupado | completada | ausente | bloqueado → ignorar
-
+    if (!disponible) return;
     if (!document.getElementById('pacienteSelect').value) {
         alert('Primero selecciona un paciente');
         return;
     }
-
     let card  = document.getElementById('slot_' + timestamp);
     let index = slotsSeleccionados.findIndex(s => s.timestamp === timestamp);
-
     if (index === -1) {
-        // No estaba → agregar y marcar azul
         slotsSeleccionados.push({ timestamp, horaInicio, horaFin, horaDisplay, horaFinDisplay });
         card.classList.add('seleccionado');
     } else {
-        // Ya estaba → quitar y desmarcar
         slotsSeleccionados.splice(index, 1);
         card.classList.remove('seleccionado');
     }
-
     actualizarInterfaz();
 }
 
-/** Selecciona todos los slots con clase CSS 'disponible' */
 function seleccionarTodosDisponibles() {
     if (!document.getElementById('pacienteSelect').value) {
         alert('Primero selecciona un paciente');
         return;
     }
-    // Limpiar selección previa
     slotsSeleccionados.forEach(s => {
         let el = document.getElementById('slot_' + s.timestamp);
         if (el) el.classList.remove('seleccionado');
     });
     slotsSeleccionados = [];
-
-    // Solo los verdaderamente disponibles (clase CSS 'disponible')
     document.querySelectorAll('.slot-card.disponible').forEach(card => {
         let timestamp = parseInt(card.id.replace('slot_', ''));
         slotsSeleccionados.push({
@@ -800,11 +837,9 @@ function seleccionarTodosDisponibles() {
         });
         card.classList.add('seleccionado');
     });
-
     actualizarInterfaz();
 }
 
-/** Limpia toda la selección */
 function deseleccionarTodos() {
     slotsSeleccionados.forEach(s => {
         let el = document.getElementById('slot_' + s.timestamp);
@@ -816,7 +851,6 @@ function deseleccionarTodos() {
 
 function limpiarSeleccion() { deseleccionarTodos(); }
 
-/** Quita un slot específico desde el tag (X) */
 function removerSlot(timestamp) {
     let index = slotsSeleccionados.findIndex(s => s.timestamp === timestamp);
     if (index !== -1) {
@@ -827,11 +861,6 @@ function removerSlot(timestamp) {
     }
 }
 
-// ============================================================
-// ACTUALIZAR INTERFAZ
-// ============================================================
-
-/** Refresca contadores, tags, resumen y estado del botón Agendar */
 function actualizarInterfaz() {
     let contador               = slotsSeleccionados.length;
     let resumenContainer       = document.getElementById('resumenContainer');
@@ -841,11 +870,8 @@ function actualizarInterfaz() {
     if (contador > 0) {
         resumenContainer.style.display       = 'block';
         seleccionadosContainer.style.display = 'block';
-
         slotsSeleccionados = ordenarSlotsPorHora(slotsSeleccionados);
         let consecutivos   = sonSlotsConsecutivos(slotsSeleccionados);
-
-        // Regenerar tags
         let listaSlots = document.getElementById('listaSlotsSeleccionados');
         listaSlots.innerHTML = '';
         slotsSeleccionados.forEach(slot => {
@@ -855,37 +881,26 @@ function actualizarInterfaz() {
                     <i class="bi bi-x-circle" onclick="removerSlot(${slot.timestamp})"></i>
                 </span>`;
         });
-
         document.getElementById('contadorSeleccionados').textContent = contador;
-
-        // Duración total
         let duracionMin  = contador * <?php echo $duracion_slot; ?>;
         let horas        = Math.floor(duracionMin / 60);
         let minutos      = duracionMin % 60;
         let duracionText = horas > 0 ? `${horas}h ${minutos}min` : `${minutos} minutos`;
         document.getElementById('duracionTotal').textContent = duracionText;
-
-        // Resumen
         let pacienteNombre = document.getElementById('pacienteSelect').selectedOptions[0].dataset.nombre;
         document.getElementById('resumenPaciente').textContent = pacienteNombre;
-
         let primerSlot = slotsSeleccionados[0];
         let ultimoSlot = slotsSeleccionados[slotsSeleccionados.length - 1];
         document.getElementById('resumenHorarioCompleto').textContent =
             `${primerSlot.horaDisplay} - ${ultimoSlot.horaFinDisplay}`;
         document.getElementById('resumenDuracion').textContent = duracionText;
-
-        // Botón: solo habilitado si los slots son consecutivos
         if (!consecutivos && contador > 1) {
             btnAgendar.disabled = true;
             btnAgendar.title    = "Los slots deben ser consecutivos";
-            document.getElementById('duracionTotal').classList.add('bg-warning');
         } else {
             btnAgendar.disabled = false;
             btnAgendar.title    = "";
-            document.getElementById('duracionTotal').classList.remove('bg-warning');
         }
-
     } else {
         resumenContainer.style.display       = 'none';
         seleccionadosContainer.style.display = 'none';
@@ -893,34 +908,25 @@ function actualizarInterfaz() {
     }
 }
 
-// ============================================================
-// MODAL DE CONFIRMACIÓN
-// ============================================================
-
 function mostrarModalConfirmacion() {
-    if (slotsSeleccionados.length === 0)                                     { alert('Selecciona al menos un slot'); return; }
+    if (slotsSeleccionados.length === 0) { alert('Selecciona al menos un slot'); return; }
     if (slotsSeleccionados.length > 1 && !sonSlotsConsecutivos(slotsSeleccionados)) { alert('Los slots deben ser consecutivos'); return; }
-    if (!document.getElementById('pacienteSelect').value)                    { alert('Selecciona un paciente'); return; }
+    if (!document.getElementById('pacienteSelect').value) { alert('Selecciona un paciente'); return; }
     let motivo = document.getElementById('motivoCita').value;
-    if (!motivo)                                                             { alert('Especifica el procedimiento'); return; }
-
+    if (!motivo) { alert('Especifica el procedimiento'); return; }
     slotsSeleccionados = ordenarSlotsPorHora(slotsSeleccionados);
-
     let duracionMin  = slotsSeleccionados.length * <?php echo $duracion_slot; ?>;
     let horas        = Math.floor(duracionMin / 60);
     let minutos      = duracionMin % 60;
     let duracionText = horas > 0 ? `${horas} hora(s) ${minutos} min` : `${minutos} minutos`;
-
     let pacienteNombre = document.getElementById('pacienteSelect').selectedOptions[0].dataset.nombre;
     document.getElementById('modalPaciente').textContent   = pacienteNombre;
     document.getElementById('modalTotalSlots').textContent = slotsSeleccionados.length;
-
     let primerSlot = slotsSeleccionados[0];
     let ultimoSlot = slotsSeleccionados[slotsSeleccionados.length - 1];
     document.getElementById('modalHorario').textContent  = `${primerSlot.horaDisplay} - ${ultimoSlot.horaFinDisplay}`;
     document.getElementById('modalDuracion').textContent = duracionText;
     document.getElementById('modalMotivo').textContent   = motivo;
-
     let listaHorarios = document.getElementById('modalListaHorarios');
     listaHorarios.innerHTML = '';
     slotsSeleccionados.forEach(slot => {
@@ -929,30 +935,22 @@ function mostrarModalConfirmacion() {
                 <span><i class="bi bi-clock"></i> ${slot.horaDisplay} - ${slot.horaFinDisplay}</span>
             </div>`;
     });
-
     new bootstrap.Modal(document.getElementById('modalConfirmacion')).show();
 }
 
-/** Rellena el formulario oculto y lo envía al servidor */
 function confirmarCitaCompuesta() {
     slotsSeleccionados = ordenarSlotsPorHora(slotsSeleccionados);
-
     let primerSlot    = slotsSeleccionados[0];
     let ultimoSlot    = slotsSeleccionados[slotsSeleccionados.length - 1];
     let slotsOcupados = slotsSeleccionados.map(s => s.horaInicio);
-
     document.getElementById('hiddenPaciente').value      = document.getElementById('pacienteSelect').value;
     document.getElementById('hiddenMotivo').value        = document.getElementById('motivoCita').value;
     document.getElementById('hiddenHoraInicio').value    = primerSlot.horaInicio;
     document.getElementById('hiddenHoraFin').value       = ultimoSlot.horaFin;
     document.getElementById('hiddenSlotsOcupados').value = JSON.stringify(slotsOcupados);
-
     document.getElementById('formAgendarCompuesta').submit();
 }
 
-// ============================================================
-// LISTENER: cambio de paciente actualiza resumen
-// ============================================================
 document.getElementById('pacienteSelect').addEventListener('change', function() {
     if (this.value && slotsSeleccionados.length > 0) {
         document.getElementById('resumenPaciente').textContent =
@@ -960,18 +958,9 @@ document.getElementById('pacienteSelect').addEventListener('change', function() 
     }
 });
 
-// ============================================================
-// PRE-SELECCIÓN AUTOMÁTICA DESDE URL (?hora=HH:MM)
-// Si el usuario llega desde el calendario con una hora en la URL,
-// se marca automáticamente ese slot al cargar la página.
-// ============================================================
 (function autoSeleccionarDesdeURL() {
-    // Hora normalizada "HH:MM:SS" generada en PHP; null si no viene en URL
     const horaParam = <?php echo $hora_pre_normalizada ? json_encode($hora_pre_normalizada) : 'null'; ?>;
-
-    if (!horaParam) return; // Sin hora en URL → no hacer nada
-
-    // Buscar el slot disponible cuyo data-hora-inicio coincida
+    if (!horaParam) return;
     document.querySelectorAll('.slot-card.disponible').forEach(card => {
         if (card.dataset.horaInicio === horaParam) {
             const timestamp      = parseInt(card.id.replace('slot_', ''));
@@ -979,14 +968,9 @@ document.getElementById('pacienteSelect').addEventListener('change', function() 
             const horaFin        = card.dataset.horaFin;
             const horaDisplay    = card.dataset.horaDisplay;
             const horaFinDisplay = card.dataset.horaFinDisplay;
-
-            // Agregar y marcar
             slotsSeleccionados.push({ timestamp, horaInicio, horaFin, horaDisplay, horaFinDisplay });
             card.classList.add('seleccionado');
-
-            // Scroll suave hasta el slot
             card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
             actualizarInterfaz();
         }
     });

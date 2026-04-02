@@ -3,29 +3,20 @@
 // Archivo con funciones útiles para todo el sistema
 
 // Iniciamos la sesión si no está iniciada
-// La sesión nos permite mantener datos del usuario entre páginas (como "estoy logueado")
 if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
 /**
  * FUNCIÓN: redirigir
- * Redirige al usuario a otra página
- * @param string $url La URL a donde redirigir
- */
-/**
- * FUNCIÓN: redirigir
  * Redirige al usuario a otra página SIN errores de headers
  * @param string $url La URL a donde redirigir
  */
 function redirigir($url) {
-    // Asegurarse de que no haya salida antes de los headers
     if (!headers_sent()) {
-        // Si no se han enviado headers, usar header()
         header("Location: $url");
         exit;
     } else {
-        // Si ya se enviaron headers, usar JavaScript
         echo "<script>window.location.href='$url';</script>";
         exit;
     }
@@ -59,9 +50,17 @@ function esPaciente() {
 }
 
 /**
+ * FUNCIÓN: esAdmin
+ * Verifica si el usuario logueado es administrador
+ * @return bool True si es admin, False si no
+ */
+function esAdmin() {
+    return isset($_SESSION['rol']) && $_SESSION['rol'] === 'admin';
+}
+
+/**
  * FUNCIÓN: requerirLogin
  * Si el usuario NO está logueado, lo redirige al login
- * Útil para páginas que solo pueden ver usuarios autenticados
  */
 function requerirLogin() {
     if (!estaLogueado()) {
@@ -70,27 +69,55 @@ function requerirLogin() {
 }
 
 /**
- * FUNCIÓN: requerirRol
+ * FUNCIÓN: requerirRol (VERSIÓN ACTUALIZADA)
  * Verifica que el usuario tenga un rol específico
+ * Si es ADMIN, tiene acceso a todo
  * @param string $rol El rol requerido ('paciente' u 'odontologo')
  */
 function requerirRol($rol) {
     requerirLogin(); // Primero asegurar que está logueado
+    
+    // Si es admin, tiene acceso a todo (sin importar el rol solicitado)
+    if (esAdmin()) {
+        return true;
+    }
+    
+    // Si no es admin, verificar el rol específico
     if ($_SESSION['rol'] !== $rol) {
-        // Si no tiene el rol correcto, redirigir al inicio
         redirigir('/ecodent/public/index.php');
     }
+    
+    return true;
+}
+
+/**
+ * FUNCIÓN: requerirRolOAdmin
+ * Verifica que el usuario tenga un rol específico O sea admin
+ * @param string $rol El rol requerido
+ */
+function requerirRolOAdmin($rol) {
+    requerirLogin();
+    
+    if (esAdmin()) {
+        return true;
+    }
+    
+    if ($_SESSION['rol'] !== $rol) {
+        redirigir('/ecodent/public/index.php');
+    }
+    
+    return true;
 }
 
 /**
  * FUNCIÓN: mostrarAlerta
- * Muestra un mensaje de alerta (usando Bootstrap) y lo elimina de la sesión
+ * Muestra un mensaje de alerta (usando Bootstrap)
  * @param string $tipo success, danger, warning, info
  */
 function mostrarAlerta($tipo) {
     if (isset($_SESSION[$tipo]) && !empty($_SESSION[$tipo])) {
         $mensaje = $_SESSION[$tipo];
-        unset($_SESSION[$tipo]); // Eliminar para que no se muestre otra vez
+        unset($_SESSION[$tipo]);
         echo "<div class='alert alert-{$tipo} alert-dismissible fade show' role='alert'>
                 {$mensaje}
                 <button type='button' class='btn-close' data-bs-dismiss='alert' aria-label='Cerrar'></button>
@@ -100,7 +127,7 @@ function mostrarAlerta($tipo) {
 
 /**
  * FUNCIÓN: sanitizar
- * Limpia texto para evitar XSS (Cross Site Scripting)
+ * Limpia texto para evitar XSS
  * @param string $dato El texto a limpiar
  * @return string El texto limpio
  */
@@ -115,7 +142,6 @@ function sanitizar($dato) {
  */
 function generarTokenCSRF() {
     if (!isset($_SESSION['token_csrf'])) {
-        // bin2hex(random_bytes(32)) genera un string aleatorio de 64 caracteres
         $_SESSION['token_csrf'] = bin2hex(random_bytes(32));
     }
     return $_SESSION['token_csrf'];

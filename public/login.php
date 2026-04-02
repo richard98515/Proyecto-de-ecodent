@@ -72,12 +72,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt3->bind_param("i", $usuario['id_usuario']);
                 $stmt3->execute();
                 
+                                // En login.php, reemplaza la parte de redirección:
                 if ($usuario['rol'] === 'odontologo') {
                     redirigir('/ecodent/public/odontologo/dashboard.php');
+                } elseif ($usuario['rol'] === 'admin') {
+                    redirigir('/ecodent/public/admin/dashboard.php');  // ← NUEVO
                 } else {
                     redirigir('/ecodent/public/paciente/dashboard.php');
                 }
-                
+                                
             } else {
                 $error = 'Contraseña incorrecta.';
             }
