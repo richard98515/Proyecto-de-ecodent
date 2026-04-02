@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Apr 02, 2026 at 05:03 AM
+-- Generation Time: Apr 02, 2026 at 06:54 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -93,6 +93,20 @@ CREATE TABLE `alertas` (
   `fecha_creacion` datetime DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+--
+-- Dumping data for table `alertas`
+--
+
+INSERT INTO `alertas` (`id_alerta`, `id_usuario`, `id_regla`, `titulo`, `mensaje`, `tipo`, `leida`, `fecha_creacion`) VALUES
+(1, 8, 1, '⚠️ Paciente con 3+ ausencias - edmundo', 'El paciente tiene 6 ausencias sin aviso. Revisar estado de cuenta.', 'danger', 0, '2026-04-02 00:06:21'),
+(2, 8, 1, '⚠️ Paciente con 3+ ausencias - Juan Pérez', 'El paciente tiene 7 ausencias sin aviso. Revisar estado de cuenta.', 'danger', 0, '2026-04-02 00:06:21'),
+(3, 8, 2, '⚠️ Paciente con llegadas tarde - sergio', 'El paciente ha llegado tarde 4 veces.', 'warning', 0, '2026-04-02 00:06:21'),
+(4, 8, 7, '⚠️ Paciente con 3+ ausencias - edmundo', 'El paciente edmundo tiene 6 ausencias sin aviso. Revisar estado de cuenta.', 'danger', 1, '2026-04-02 00:11:21'),
+(5, 8, 7, '⚠️ Paciente con 3+ ausencias - Juan Pérez', 'El paciente Juan Pérez tiene 7 ausencias sin aviso. Revisar estado de cuenta.', 'danger', 1, '2026-04-02 00:11:21'),
+(6, 8, 8, '⚠️ Paciente con llegadas tarde - sergio', 'El paciente sergio ha llegado tarde 4 veces.', 'warning', 1, '2026-04-02 00:11:21'),
+(7, 8, 9, '⚠️ Paciente bloqueado - Juan Pérez', 'El paciente Juan Pérez está BLOQUEADO. No puede agendar citas.', 'danger', 1, '2026-04-02 00:11:21'),
+(8, 8, 9, '⚠️ Paciente bloqueado - edmundo', 'El paciente edmundo está BLOQUEADO. No puede agendar citas.', 'danger', 1, '2026-04-02 00:11:21');
+
 -- --------------------------------------------------------
 
 --
@@ -108,6 +122,14 @@ CREATE TABLE `backups` (
   `estado` enum('exitoso','fallido','en_progreso') DEFAULT 'exitoso',
   `fecha_creacion` datetime DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `backups`
+--
+
+INSERT INTO `backups` (`id_backup`, `nombre_archivo`, `tipo`, `tamano`, `ruta`, `estado`, `fecha_creacion`) VALUES
+(1, 'ecodent_backup_diario_2026-04-02_05-32-53.sql', 'diario', 56862, 'C:\\xampp\\htdocs\\ecodent\\cron/../backups/ecodent_backup_diario_2026-04-02_05-32-53.sql', 'exitoso', '2026-04-01 23:32:53'),
+(2, 'ecodent_backup_diario_2026-04-02_06-06-21.sql', 'diario', 57250, 'C:\\xampp\\htdocs\\ecodent\\cron/../backups/ecodent_backup_diario_2026-04-02_06-06-21.sql', 'exitoso', '2026-04-02 00:06:21');
 
 -- --------------------------------------------------------
 
@@ -196,7 +218,8 @@ INSERT INTO `citas` (`id_cita`, `id_paciente`, `id_odontologo`, `fecha_cita`, `h
 (50, 5, 1, '2026-04-06', '10:00:00', '10:40:00', 'extraccion', 'completada', 0, 3, 1, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, '2026-04-01 02:35:08', '2026-04-01 02:35:36'),
 (51, 5, 1, '2026-04-06', '11:20:00', '12:00:00', 'blanqueamiento', 'completada', 0, 3, 1, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, '2026-04-01 02:35:22', '2026-04-01 02:35:44'),
 (52, 4, 1, '2026-04-27', '08:00:00', '08:40:00', 'ortodoncia', 'programada', 0, 3, 1, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, '2026-04-01 22:50:17', NULL),
-(53, 5, 2, '2026-04-08', '09:00:00', '09:40:00', 'blanqueamiento', 'programada', 0, 3, 1, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, '2026-04-01 22:52:41', NULL);
+(53, 5, 2, '2026-04-08', '09:00:00', '09:40:00', 'blanqueamiento', 'completada', 0, 3, 1, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, '2026-04-01 22:52:41', '2026-04-02 00:30:45'),
+(54, 5, 1, '2026-04-01', '16:00:00', '16:40:00', 'protesis', 'completada', 0, 3, 1, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, '2026-04-01 23:47:10', '2026-04-01 23:47:23');
 
 --
 -- Triggers `citas`
@@ -309,6 +332,14 @@ CREATE TABLE `estadisticas_odontologos` (
   `fecha_calculo` datetime DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+--
+-- Dumping data for table `estadisticas_odontologos`
+--
+
+INSERT INTO `estadisticas_odontologos` (`id_estadistica`, `id_odontologo`, `mes`, `anio`, `total_citas`, `citas_completadas`, `ausencias`, `llegadas_tarde`, `ingresos_totales`, `fecha_calculo`) VALUES
+(1, 1, 4, 2026, 16, 4, 4, 0, 40.00, '2026-04-02 00:06:20'),
+(2, 2, 4, 2026, 1, 0, 0, 0, 0.00, '2026-04-02 00:06:20');
+
 -- --------------------------------------------------------
 
 --
@@ -416,15 +447,15 @@ INSERT INTO `mensajes_pendientes` (`id_mensaje`, `id_usuario`, `id_cita`, `tipo`
 (21, 4, 32, '', 'email', 'Tu cita ha sido cancelada por el odontólogo. Motivo: capacitacion. \r\n                    Por favor, ingresa al sistema para elegir una nueva fecha entre las opciones disponibles.', NULL, NULL, 1, '2026-03-30 15:13:36', '2026-04-01 01:44:31', '2026-03-30 15:13:36'),
 (22, 4, 36, 'cancelacion', 'email', 'Tu cita ha sido cancelada exitosamente. Puedes agendar un nuevo horario cuando lo desees.', NULL, NULL, 1, '2026-03-31 00:34:47', '2026-04-01 01:44:38', '2026-03-31 00:34:47'),
 (23, 4, 42, 'cancelacion', 'email', 'Tu cita ha sido cancelada exitosamente. Puedes agendar un nuevo horario cuando lo desees.', NULL, NULL, 1, '2026-03-31 00:34:49', '2026-04-01 01:44:44', '2026-03-31 00:34:49'),
-(24, 5, 45, '', 'email', 'Tu cita del 02/04/2026 a las 08:40 ha sido cancelada por el odontólogo. \r\nMotivo: CAPACITACION. \r\nPor favor, ingresa al sistema para elegir una nueva fecha entre las opciones disponibles.', '12347885', 'ser@gmail.com', 0, '2026-04-01 01:50:23', NULL, '2026-04-01 01:50:23'),
+(24, 5, 45, '', 'email', 'Tu cita del 02/04/2026 a las 08:40 ha sido cancelada por el odontólogo. \r\nMotivo: CAPACITACION. \r\nPor favor, ingresa al sistema para elegir una nueva fecha entre las opciones disponibles.', '12347885', 'ser@gmail.com', 1, '2026-04-01 01:50:23', '2026-04-01 23:32:30', '2026-04-01 01:50:23'),
 (25, 5, 45, '', 'whatsapp', '🦷 *EcoDent - Cita Cancelada*\n\nHola sergio, lamentamos informarte que tu cita del *02/04/2026* a las *08:40* ha sido cancelada.\n\n📋 *Motivo:* CAPACITACION\n\n📅 *Opciones de reprogramación disponibles:*\n  1. 02/04/2026 a las 08:00\n  2. 02/04/2026 a las 10:40\n  3. 02/04/2026 a las 11:20\n\nPor favor ingresa al sistema EcoDent para elegir tu nueva fecha.\n📞 Tel: 77112233', '12347885', 'ser@gmail.com', 0, '2026-04-01 01:50:23', NULL, '2026-04-01 01:50:23'),
-(26, 4, 41, '', 'email', 'Tu cita del 03/04/2026 a las 08:40 ha sido cancelada por el odontólogo. \r\nMotivo: EMERGENCIA. \r\nPor favor, ingresa al sistema para elegir una nueva fecha entre las opciones disponibles.', '73537562', 'richardocsachoqueherrera985@gmail.com', 0, '2026-04-01 01:51:35', NULL, '2026-04-01 01:51:35'),
+(26, 4, 41, '', 'email', 'Tu cita del 03/04/2026 a las 08:40 ha sido cancelada por el odontólogo. \r\nMotivo: EMERGENCIA. \r\nPor favor, ingresa al sistema para elegir una nueva fecha entre las opciones disponibles.', '73537562', 'richardocsachoqueherrera985@gmail.com', 1, '2026-04-01 01:51:35', '2026-04-01 23:32:35', '2026-04-01 01:51:35'),
 (27, 4, 41, '', 'whatsapp', '🦷 *EcoDent - Cita Cancelada*\n\nHola Richard Edmundo Herrera, lamentamos informarte que tu cita del *03/04/2026* a las *08:40* ha sido cancelada.\n\n📋 *Motivo:* EMERGENCIA\n\n📅 *Opciones de reprogramación disponibles:*\n  1. 02/04/2026 a las 09:20\n  2. 02/04/2026 a las 08:00\n\nPor favor ingresa al sistema EcoDent para elegir tu nueva fecha.\n📞 Tel: 77112233', '73537562', 'richardocsachoqueherrera985@gmail.com', 0, '2026-04-01 01:51:35', NULL, '2026-04-01 01:51:35'),
-(28, 7, 44, 'cancelacion_doctor', 'email', 'Tu cita del 06/04/2026 a las 10:40 ha sido cancelada por el odontólogo. \r\nMotivo: EMERGENCIA. \r\nPor favor, ingresa al sistema para elegir una nueva fecha entre las opciones disponibles.', '73537562', 'herreraocsachoquerichard985@gmail.com', 0, '2026-04-01 02:00:39', NULL, '2026-04-01 02:00:39'),
+(28, 7, 44, 'cancelacion_doctor', 'email', 'Tu cita del 06/04/2026 a las 10:40 ha sido cancelada por el odontólogo. \r\nMotivo: EMERGENCIA. \r\nPor favor, ingresa al sistema para elegir una nueva fecha entre las opciones disponibles.', '73537562', 'herreraocsachoquerichard985@gmail.com', 1, '2026-04-01 02:00:39', '2026-04-01 23:32:40', '2026-04-01 02:00:39'),
 (29, 7, 44, 'cancelacion_doctor', 'whatsapp', '🦷 *EcoDent - Cita Cancelada*\n\nHola edmundo, lamentamos informarte que tu cita del *06/04/2026* a las *10:40* ha sido cancelada.\n\n📋 *Motivo:* EMERGENCIA\n\n📅 *Opciones de reprogramación disponibles:*\n  1. 17/04/2026 a las 08:00\n  2. 17/04/2026 a las 08:40\n  3. 17/04/2026 a las 09:20\n\nPor favor ingresa al sistema EcoDent para elegir tu nueva fecha.\n📞 Tel: 77112233', '73537562', 'herreraocsachoquerichard985@gmail.com', 0, '2026-04-01 02:00:39', NULL, '2026-04-01 02:00:39'),
-(30, 4, 43, 'cancelacion_doctor', 'email', 'Tu cita del 06/04/2026 a las 08:00 ha sido cancelada por el odontólogo. \r\nMotivo: BBB. \r\nPor favor, ingresa al sistema para elegir una nueva fecha entre las opciones disponibles.', '73537562', 'richardocsachoqueherrera985@gmail.com', 0, '2026-04-01 02:03:40', NULL, '2026-04-01 02:03:40'),
+(30, 4, 43, 'cancelacion_doctor', 'email', 'Tu cita del 06/04/2026 a las 08:00 ha sido cancelada por el odontólogo. \r\nMotivo: BBB. \r\nPor favor, ingresa al sistema para elegir una nueva fecha entre las opciones disponibles.', '73537562', 'richardocsachoqueherrera985@gmail.com', 1, '2026-04-01 02:03:40', '2026-04-01 23:32:47', '2026-04-01 02:03:40'),
 (31, 4, 43, 'cancelacion_doctor', 'whatsapp', '🦷 *EcoDent - Cita Cancelada*\n\nHola Richard Edmundo Herrera, lamentamos informarte que tu cita del *06/04/2026* a las *08:00* ha sido cancelada.\n\n📋 *Motivo:* BBB\n\n📅 *Opciones de reprogramación disponibles:*\n  1. 02/04/2026 a las 09:20\n  2. 02/04/2026 a las 10:00\n  3. 02/04/2026 a las 12:00\n\nPor favor ingresa al sistema EcoDent para elegir tu nueva fecha.\n📞 Tel: 77112233', '73537562', 'richardocsachoqueherrera985@gmail.com', 0, '2026-04-01 02:03:40', NULL, '2026-04-01 02:03:40'),
-(32, 6, 37, 'cancelacion_doctor', 'email', 'Tu cita del 03/04/2026 a las 08:00 ha sido cancelada por el odontólogo. \r\nMotivo: DERMATOLOGO. \r\nPor favor, ingresa al sistema para elegir una nueva fecha entre las opciones disponibles.', '73537562', 'jhamilth@gmail.com', 0, '2026-04-01 02:05:47', NULL, '2026-04-01 02:05:47'),
+(32, 6, 37, 'cancelacion_doctor', 'email', 'Tu cita del 03/04/2026 a las 08:00 ha sido cancelada por el odontólogo. \r\nMotivo: DERMATOLOGO. \r\nPor favor, ingresa al sistema para elegir una nueva fecha entre las opciones disponibles.', '73537562', 'jhamilth@gmail.com', 1, '2026-04-01 02:05:47', '2026-04-01 23:32:52', '2026-04-01 02:05:47'),
 (33, 6, 37, 'cancelacion_doctor', 'whatsapp', '🦷 *EcoDent - Cita Cancelada*\n\nHola Jhamileth, lamentamos informarte que tu cita del *03/04/2026* a las *08:00* ha sido cancelada.\n\n📋 *Motivo:* DERMATOLOGO\n\n📅 *Opciones de reprogramación disponibles:*\n  1. 02/04/2026 a las 08:00\n  2. 02/04/2026 a las 09:20\n  3. 02/04/2026 a las 10:00\n\nPor favor ingresa al sistema EcoDent para elegir tu nueva fecha.\n📞 Tel: 77112233', '73537562', 'jhamilth@gmail.com', 0, '2026-04-01 02:05:47', NULL, '2026-04-01 02:05:47');
 
 -- --------------------------------------------------------
@@ -608,6 +639,15 @@ CREATE TABLE `reglas_alertas` (
   `activa` tinyint(1) DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+--
+-- Dumping data for table `reglas_alertas`
+--
+
+INSERT INTO `reglas_alertas` (`id_regla`, `nombre`, `condicion`, `mensaje`, `activa`) VALUES
+(7, 'Paciente con 3+ ausencias', 'ausencias_sin_aviso >= 3', 'El paciente {nombre_paciente} tiene {ausencias} ausencias sin aviso. Revisar estado de cuenta.', 1),
+(8, 'Paciente con llegadas tarde', 'llegadas_tarde >= 3', 'El paciente {nombre_paciente} ha llegado tarde {llegadas_tarde} veces.', 1),
+(9, 'Paciente bloqueado', 'estado_cuenta = \"bloqueada\"', 'El paciente {nombre_paciente} está BLOQUEADO. No puede agendar citas.', 1);
+
 -- --------------------------------------------------------
 
 --
@@ -629,16 +669,6 @@ CREATE TABLE `slots_bloqueados` (
 --
 
 INSERT INTO `slots_bloqueados` (`id_bloqueo`, `id_odontologo`, `fecha`, `hora_inicio`, `hora_fin`, `motivo`, `fecha_registro`) VALUES
-(2, 1, '2026-03-16', '08:00:00', '08:40:00', 'correo', '2026-03-14 15:03:03'),
-(3, 1, '2026-03-17', '08:40:00', '09:20:00', 'correo', '2026-03-14 15:08:24'),
-(4, 1, '2026-03-17', '09:20:00', '10:00:00', 'correo', '2026-03-14 15:08:24'),
-(23, 1, '2026-03-17', '08:00:00', '08:40:00', 'Cancelación por odontólogo: emergencia', '2026-03-16 15:15:05'),
-(24, 1, '2026-03-19', '15:00:00', '15:40:00', 'Cancelación por odontólogo: capacitacion', '2026-03-17 03:11:49'),
-(25, 1, '2026-03-17', '10:00:00', '10:40:00', 'Cancelación por odontólogo: emergencia', '2026-03-17 03:25:39'),
-(26, 1, '2026-03-17', '10:00:00', '10:40:00', 'Cancelación por odontólogo: emergencia', '2026-03-17 04:52:14'),
-(27, 1, '2026-03-23', '08:00:00', '08:40:00', 'Cancelación por odontólogo: emergencia personal', '2026-03-17 05:08:10'),
-(28, 1, '2026-03-27', '09:20:00', '10:00:00', 'Cancelación por odontólogo: emergencia', '2026-03-17 09:17:51'),
-(29, 1, '2026-03-31', '17:20:00', '18:00:00', 'Cancelación por odontólogo: capacitacion', '2026-03-30 15:13:36'),
 (36, 1, '2026-04-02', '08:40:00', '09:20:00', 'Cancelación por odontólogo: CAPACITACION', '2026-04-01 01:50:23'),
 (37, 1, '2026-04-03', '08:40:00', '09:20:00', 'Cancelación por odontólogo: EMERGENCIA', '2026-04-01 01:51:35'),
 (38, 1, '2026-04-06', '10:40:00', '11:20:00', 'Cancelación por odontólogo: EMERGENCIA', '2026-04-01 02:00:39'),
@@ -704,14 +734,14 @@ CREATE TABLE `usuarios` (
 --
 
 INSERT INTO `usuarios` (`id_usuario`, `email`, `contrasena_hash`, `nombre_completo`, `telefono`, `rol`, `email_verificado`, `codigo_verificacion`, `codigo_expiracion`, `activo`, `fecha_registro`, `ultimo_acceso`) VALUES
-(1, 'carlos.mamani@ecodent.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Dr. Carlos Mamani', '77112233', 'odontologo', 1, NULL, NULL, 1, '2026-03-14 14:03:49', '2026-04-01 11:27:04'),
+(1, 'carlos.mamani@ecodent.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Dr. Carlos Mamani', '77112233', 'odontologo', 1, NULL, NULL, 1, '2026-03-14 14:03:49', '2026-04-01 23:46:05'),
 (2, 'maria.quispe@ecodent.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Dra. María Quispe', '77112234', 'odontologo', 1, NULL, NULL, 1, '2026-03-14 14:03:49', NULL),
 (3, 'juan.perez@email.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Juan Pérez', '71234567', 'paciente', 1, NULL, NULL, 1, '2026-03-14 14:03:49', '2026-03-31 01:30:16'),
-(4, 'richardocsachoqueherrera985@gmail.com', '$2y$10$8dC6Qdmyt8R/dfInimLiO.sI8dGTNV0LK5Hiehtf0iTXXB3AHaBU6', 'Richard Edmundo Herrera', '73537562', 'paciente', 1, NULL, NULL, 1, '2026-03-14 14:12:19', '2026-03-31 01:30:55'),
+(4, 'richardocsachoqueherrera985@gmail.com', '$2y$10$8dC6Qdmyt8R/dfInimLiO.sI8dGTNV0LK5Hiehtf0iTXXB3AHaBU6', 'Richard Edmundo Herrera', '73537562', 'paciente', 1, NULL, NULL, 1, '2026-03-14 14:12:19', '2026-04-01 23:51:52'),
 (5, 'ser@gmail.com', '$2y$10$JylLczXrWYIEqLFiLUhLSORT4ILIUJru0GEPsq.Cri50kaJ0A6t1K', 'sergio', '12347885', 'paciente', 1, NULL, NULL, 1, '2026-03-14 14:19:24', '2026-03-14 14:19:24'),
 (6, 'jhamilth@gmail.com', '$2y$10$o/DKzsv0cTi3f8Wby6hFve/yXebNW8SgRImWhs4HlGCFach15/MUa', 'Jhamileth', '73537562', 'paciente', 1, NULL, NULL, 1, '2026-03-30 19:16:01', NULL),
 (7, 'herreraocsachoquerichard985@gmail.com', '$2y$10$yoAqXbgIK6NEKDFZ0.UrdOzSL29IE8bCMJA5vXa07MPDCAGU3HqOq', 'edmundo', '73537562', 'paciente', 1, NULL, NULL, 1, '2026-03-31 01:05:24', '2026-04-01 02:23:59'),
-(8, 'admin@ecodent.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Administrador Sistema', '77112233', 'admin', 1, NULL, NULL, 1, '2026-04-01 10:30:22', '2026-04-01 22:14:17');
+(8, 'admin@ecodent.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Administrador Sistema', '77112233', 'admin', 1, NULL, NULL, 1, '2026-04-01 10:30:22', '2026-04-02 00:16:12');
 
 --
 -- Indexes for dumped tables
@@ -845,25 +875,25 @@ ALTER TABLE `usuarios`
 -- AUTO_INCREMENT for table `alertas`
 --
 ALTER TABLE `alertas`
-  MODIFY `id_alerta` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id_alerta` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT for table `backups`
 --
 ALTER TABLE `backups`
-  MODIFY `id_backup` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id_backup` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `citas`
 --
 ALTER TABLE `citas`
-  MODIFY `id_cita` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=54;
+  MODIFY `id_cita` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=55;
 
 --
 -- AUTO_INCREMENT for table `estadisticas_odontologos`
 --
 ALTER TABLE `estadisticas_odontologos`
-  MODIFY `id_estadistica` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id_estadistica` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `historial_modificaciones_citas`
@@ -911,7 +941,7 @@ ALTER TABLE `pagos`
 -- AUTO_INCREMENT for table `reglas_alertas`
 --
 ALTER TABLE `reglas_alertas`
-  MODIFY `id_regla` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id_regla` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
 
 --
 -- AUTO_INCREMENT for table `slots_bloqueados`

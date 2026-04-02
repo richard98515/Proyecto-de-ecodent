@@ -4,6 +4,7 @@
 
 require_once '../../config/database.php';
 require_once '../../includes/funciones.php';
+date_default_timezone_set('America/La_Paz');
 
 // Verificar que sea admin
 if (!estaLogueado() || !esAdmin()) {
@@ -40,6 +41,48 @@ $pacientes_problema = $result ? $result->fetch_assoc()['total'] : 0;
 // Ingresos del mes actual
 $result = $conexion->query("SELECT COALESCE(SUM(monto), 0) as total FROM pagos WHERE MONTH(fecha_pago) = MONTH(CURDATE()) AND YEAR(fecha_pago) = YEAR(CURDATE())");
 $ingresos_mes = $result ? $result->fetch_assoc()['total'] : 0;
+
+// =============================================
+// SLOTS BLOQUEADOS - MONITOREO DE LIMPIEZA
+// =============================================
+
+// Slots bloqueados futuros (los que están vigentes)
+$stmt_slots_futuros = $conexion->prepare("SELECT COUNT(*) as total FROM slots_bloqueados WHERE fecha >= CURDATE()");
+$stmt_slots_futuros->execute();
+$slots_futuros = $stmt_slots_futuros->get_result()->fetch_assoc()['total'];
+
+// Slots bloqueados pasados (los que NO se limpiaron - deberían ser 0)
+$stmt_slots_pasados = $conexion->prepare("SELECT COUNT(*) as total FROM slots_bloqueados WHERE fecha < CURDATE()");
+$stmt_slots_pasados->execute();
+$slots_pasados = $stmt_slots_pasados->get_result()->fetch_assoc()['total'];
+
+$total_slots_bloqueados = $slots_futuros + $slots_pasados;
+
+// =============================================
+// ALERTAS - NOTIFICACIONES
+// =============================================
+
+// Contar alertas no leídas
+$stmt_alertas = $conexion->prepare("
+    SELECT COUNT(*) as total 
+    FROM alertas 
+    WHERE id_usuario = ? AND leida = 0
+");
+$stmt_alertas->bind_param("i", $_SESSION['id_usuario']);
+$stmt_alertas->execute();
+$alertas_no_leidas = $stmt_alertas->get_result()->fetch_assoc()['total'];
+
+// Obtener últimas 5 alertas
+$stmt_lista = $conexion->prepare("
+    SELECT id_alerta, titulo, mensaje, tipo, fecha_creacion, leida
+    FROM alertas 
+    WHERE id_usuario = ?
+    ORDER BY fecha_creacion DESC 
+    LIMIT 5
+");
+$stmt_lista->bind_param("i", $_SESSION['id_usuario']);
+$stmt_lista->execute();
+$alertas_lista = $stmt_lista->get_result();
 
 // Próximas citas
 $proximas_citas = $conexion->query("
@@ -137,6 +180,22 @@ require_once '../../includes/header.php';
     border-radius: 15px;
     margin-bottom: 30px;
 }
+/* Estilos para el dropdown de alertas */
+.alertas-dropdown {
+    width: 350px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+.alertas-item {
+    transition: background 0.2s;
+}
+.alertas-item:hover {
+    background: #f8f9fa;
+}
+.alertas-item.no-leida {
+    background: #fff3cd;
+    border-left: 3px solid #ffc107;
+}
 </style>
 
 <div class="admin-header">
@@ -150,7 +209,67 @@ require_once '../../includes/header.php';
                 <?php echo strftime('%A, %d de %B de %Y', strtotime($hoy)); ?>
             </p>
         </div>
-        <div>
+        <div class="d-flex align-items-center">
+            <!-- CAMPANITA DE ALERTAS -->
+            <div class="dropdown me-3">
+                <a href="#" class="text-white position-relative" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-bell-fill fs-3"></i>
+                    <?php if ($alertas_no_leidas > 0): ?>
+                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                            <?php echo $alertas_no_leidas; ?>
+                        </span>
+                    <?php endif; ?>
+                </a>
+                <div class="dropdown-menu dropdown-menu-end alertas-dropdown p-0">
+                    <div class="dropdown-header bg-light py-2 px-3">
+                        <strong><i class="bi bi-bell-fill me-1"></i> Notificaciones</strong>
+                        <?php if ($alertas_no_leidas > 0): ?>
+                            <a href="marcar_todas_alertas.php" class="float-end small text-decoration-none">
+                                Marcar todas
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                    <div class="dropdown-divider m-0"></div>
+                    <?php if ($alertas_lista->num_rows > 0): ?>
+                        <?php while($alerta = $alertas_lista->fetch_assoc()): ?>
+                            <a href="ver_alerta.php?id=<?php echo $alerta['id_alerta']; ?>" 
+                               class="dropdown-item alertas-item <?php echo $alerta['leida'] ? '' : 'no-leida'; ?>">
+                                <div class="d-flex align-items-start">
+                                    <div class="me-2 mt-1">
+                                        <?php if ($alerta['tipo'] == 'danger'): ?>
+                                            <i class="bi bi-exclamation-octagon-fill text-danger fs-5"></i>
+                                        <?php elseif ($alerta['tipo'] == 'warning'): ?>
+                                            <i class="bi bi-exclamation-triangle-fill text-warning fs-5"></i>
+                                        <?php else: ?>
+                                            <i class="bi bi-info-circle-fill text-info fs-5"></i>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <div class="fw-bold small"><?php echo htmlspecialchars($alerta['titulo']); ?></div>
+                                        <div class="small text-muted"><?php echo htmlspecialchars(substr($alerta['mensaje'], 0, 60)); ?>...</div>
+                                        <small class="text-muted"><?php echo date('d/m/Y H:i', strtotime($alerta['fecha_creacion'])); ?></small>
+                                    </div>
+                                    <?php if (!$alerta['leida']): ?>
+                                        <span class="badge bg-primary rounded-pill ms-2 mt-1" style="font-size: 10px;">Nueva</span>
+                                    <?php endif; ?>
+                                </div>
+                            </a>
+                            <div class="dropdown-divider m-0"></div>
+                        <?php endwhile; ?>
+                    <?php else: ?>
+                        <div class="dropdown-item text-center text-muted py-4">
+                            <i class="bi bi-check-circle fs-3 d-block mb-2"></i>
+                            No hay alertas
+                        </div>
+                    <?php endif; ?>
+                    <div class="dropdown-footer text-center p-2 bg-light">
+                        <a href="ver_todas_alertas.php" class="small text-decoration-none">
+                            Ver todas las alertas
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
             <span class="badge bg-light text-dark p-2">
                 <i class="bi bi-calendar-check"></i> <?php echo $citas_hoy; ?> citas hoy
             </span>
@@ -158,7 +277,7 @@ require_once '../../includes/header.php';
     </div>
 </div>
 
-<!-- Tarjetas de estadísticas -->
+<!-- Tarjetas de estadísticas - Fila 1 -->
 <div class="row mb-4">
     <div class="col-md-3 mb-3">
         <div class="stat-card" style="border-left-color: #4361ee;">
@@ -217,9 +336,9 @@ require_once '../../includes/header.php';
     </div>
 </div>
 
-<!-- Segunda fila -->
+<!-- Segunda fila - 3 columnas (ingresos, backups, slots) -->
 <div class="row mb-4">
-    <div class="col-md-6 mb-3">
+    <div class="col-md-4 mb-3">
         <div class="stat-card" style="border-left-color: #764ba2;">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
@@ -233,7 +352,7 @@ require_once '../../includes/header.php';
         </div>
     </div>
     
-    <div class="col-md-6 mb-3">
+    <div class="col-md-4 mb-3">
         <div class="stat-card" style="border-left-color: #17a2b8;">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
@@ -242,6 +361,45 @@ require_once '../../includes/header.php';
                 </div>
                 <div class="stat-icon" style="background: #e0f7fa; color: #17a2b8;">
                     <i class="bi bi-database"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4 mb-3">
+        <div class="stat-card" style="border-left-color: <?php echo ($slots_pasados > 0) ? '#e63946' : '#06d6a0'; ?>;">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="stat-number">
+                        <?php echo $slots_futuros; ?>
+                        <?php if ($slots_pasados > 0): ?>
+                            <span class="badge bg-danger ms-2" style="font-size: 14px;">+<?php echo $slots_pasados; ?></span>
+                        <?php endif; ?>
+                    </div>
+                    <div class="stat-label">
+                        Slots Bloqueados
+                        <?php if ($slots_pasados == 0 && $total_slots_bloqueados > 0): ?>
+                            <i class="bi bi-check-circle text-success" title="Limpieza automática activa"></i>
+                        <?php elseif ($slots_pasados > 0): ?>
+                            <i class="bi bi-exclamation-triangle text-danger" title="Hay slots pasados sin limpiar"></i>
+                        <?php endif; ?>
+                    </div>
+                    <?php if ($slots_pasados > 0): ?>
+                        <small class="text-danger">
+                            ⚠️ <?php echo $slots_pasados; ?> slots pasados (ejecuta .bat)
+                        </small>
+                    <?php else: ?>
+                        <small class="text-muted">
+                            <?php if ($total_slots_bloqueados == 0): ?>
+                                Sin bloqueos activos
+                            <?php else: ?>
+                                ✅ Limpieza automática OK
+                            <?php endif; ?>
+                        </small>
+                    <?php endif; ?>
+                </div>
+                <div class="stat-icon" style="background: <?php echo ($slots_pasados > 0) ? '#ffe5e8' : '#e0faf3'; ?>; color: <?php echo ($slots_pasados > 0) ? '#e63946' : '#06d6a0'; ?>;">
+                    <i class="bi bi-lock"></i>
                 </div>
             </div>
         </div>

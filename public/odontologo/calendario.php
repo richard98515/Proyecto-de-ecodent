@@ -126,13 +126,24 @@ mostrar_calendario:
 if ($es_admin && isset($_GET['ver_odontologo']) && is_numeric($_GET['ver_odontologo'])) {
     $id_odontologo_temp = (int)$_GET['ver_odontologo'];
     // Verificar que existe
-    $check = $conexion->prepare("SELECT id_odontologo, duracion_cita_min, color_calendario, activo, especialidad_principal FROM odontologos WHERE id_odontologo = ?");
-    $check->bind_param("i", $id_odontologo_temp);
+    $check = $conexion->prepare("
+    SELECT 
+        o.id_odontologo,
+        o.duracion_cita_min,
+        o.color_calendario,
+        o.activo,
+        o.especialidad_principal,
+        u.nombre_completo
+    FROM odontologos o
+    INNER JOIN usuarios u ON o.id_usuario = u.id_usuario
+    WHERE o.id_odontologo = ?")
+    ;$check->bind_param("i", $id_odontologo_temp);
     $check->execute();
     $check_result = $check->get_result();
     if ($check_result->num_rows > 0) {
         $odontologo_ver = $check_result->fetch_assoc();
         $id_odontologo = $odontologo_ver['id_odontologo'];
+        $nombre_odontologo = $odontologo_ver['nombre_completo'];
         $odontologo = $odontologo_ver;
         $_SESSION['admin_viendo_odontologo'] = $id_odontologo;
     } else {
@@ -468,7 +479,18 @@ if ($es_admin && isset($_SESSION['admin_viendo_odontologo']) && $_SESSION['admin
 <div class="row mb-3">
     <div class="col-md-8">
         <h1><i class="bi bi-calendar-week"></i> Mi Calendario — <?php echo date('d/m/Y'); ?></h1>
-        <p class="mb-0">Bienvenido, <strong><?php echo htmlspecialchars($_SESSION['nombre_completo'] ?? 'Odontólogo'); ?></strong></p>
+        <p class="mb-0">
+        Bienvenido, 
+        <strong>
+        <?php 
+        if ($es_admin) {
+            echo htmlspecialchars("Administrador - Calendario del odontólogo: " . $nombre_odontologo);
+        } else {
+            echo htmlspecialchars($nombre_odontologo);
+        }
+        ?>
+        </strong>
+        </p>
         <?php if (isset($odontologo['especialidad_principal'])): ?>
             <small class="text-muted">Especialidad: <?php echo htmlspecialchars($odontologo['especialidad_principal']); ?> | Duración de cita: <?php echo $odontologo['duracion_cita_min']; ?> min</small>
         <?php endif; ?>
