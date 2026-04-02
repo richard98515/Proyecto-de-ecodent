@@ -267,7 +267,7 @@ if (isset($_SESSION['exito'])) {
                     <a href="mis_pagos.php" class="btn btn-outline-success">
                         <i class="bi bi-cash-coin"></i> Historial de Pagos
                     </a>
-                    <a href="perfil.php" class="btn btn-outline-secondary">
+                    <a href="/ecodent/public/perfil.php" class="btn btn-outline-secondary">
                         <i class="bi bi-person"></i> Mi Perfil
                     </a>
                 </div>
@@ -283,7 +283,9 @@ if (isset($_SESSION['exito'])) {
             <div class="card-body text-center">
                 <p>¿Necesitas ayuda? Nuestro asistente virtual está disponible 24/7</p>
                 <button class="btn btn-success" onclick="abrirChat()">
-                    <i class="bi bi-chat-dots"></i> Hablar con Asistente
+                    <<a href="/ecodent/public/asistente/index.php" class="btn btn-success">
+                        <i class="bi bi-chat-dots"></i> Hablar con Asistente
+                    </a>
                 </button>
             </div>
         </div>

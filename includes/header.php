@@ -125,6 +125,11 @@ if (session_status() == PHP_SESSION_NONE) {
                                     <i class="bi bi-cash-stack"></i> Mis Pagos
                                 </a>
                             </li>
+                            <li class="nav-item">
+                                    <a class="nav-link" href="/ecodent/public/asistente/index.php">
+                                        <i class="bi bi-robot"></i> Asistente IA
+                                    </a>
+                                </li>
                         <?php endif; ?>
                     <?php else: ?>
                         <!-- Menú para NO LOGUEADOS -->
@@ -183,6 +188,7 @@ if (session_status() == PHP_SESSION_NONE) {
                                         <i class="bi bi-box-arrow-right"></i> Cerrar Sesión
                                     </a>
                                 </li>
+                                
                             </ul>
                         </li>
                     <?php else: ?>
