@@ -16,7 +16,7 @@ if (!estaLogueado()) {
 $es_admin = esAdmin();
 $es_odontologo = esOdontologo();
 
-// Verificar permisos: solo admin u odontólogo pueden acceder
+// Verificar permisos
 if (!$es_admin && !$es_odontologo) {
     $_SESSION['error'] = 'No tienes permisos para realizar esta acción';
     redirigir('/ecodent/public/dashboard.php');
@@ -35,6 +35,7 @@ if (!isset($_POST['token_csrf']) || !verificarTokenCSRF($_POST['token_csrf'])) {
 // Obtener datos del formulario
 $fecha = $_POST['fecha'] ?? date('Y-m-d');
 $id_paciente = $_POST['id_paciente'] ?? 0;
+$id_tratamiento = $_POST['id_tratamiento'] ?? null;  // ← NUEVO
 $motivo = sanitizar($_POST['motivo'] ?? '');
 $hora_inicio = $_POST['hora_inicio'] ?? '';
 $hora_fin = $_POST['hora_fin'] ?? '';
@@ -47,23 +48,26 @@ if (!$id_paciente) {
     redirigir('/ecodent/public/odontologo/agendar_cita.php?fecha=' . $fecha);
 }
 
+if (!$id_tratamiento) {
+    $_SESSION['error'] = 'Debes seleccionar un tratamiento para esta cita';
+    redirigir('/ecodent/public/odontologo/agendar_cita.php?fecha=' . $fecha . '&paciente=' . $id_paciente);
+}
+
 if (!$motivo) {
     $_SESSION['error'] = 'Debes especificar el motivo del procedimiento';
-    redirigir('/ecodent/public/odontologo/agendar_cita.php?fecha=' . $fecha);
+    redirigir('/ecodent/public/odontologo/agendar_cita.php?fecha=' . $fecha . '&paciente=' . $id_paciente);
 }
 
 if (!$hora_inicio || !$hora_fin) {
     $_SESSION['error'] = 'Horario no válido';
-    redirigir('/ecodent/public/odontologo/agendar_cita.php?fecha=' . $fecha);
+    redirigir('/ecodent/public/odontologo/agendar_cita.php?fecha=' . $fecha . '&paciente=' . $id_paciente);
 }
 
 // Obtener id_odontologo
 $id_odontologo = null;
 
-// Si es admin, puede venir el id_odontologo en POST
 if ($es_admin && isset($_POST['id_odontologo']) && is_numeric($_POST['id_odontologo'])) {
     $id_odontologo = (int)$_POST['id_odontologo'];
-    // Verificar que el odontólogo existe
     $check = $conexion->prepare("SELECT id_odontologo FROM odontologos WHERE id_odontologo = ? AND activo = 1");
     $check->bind_param("i", $id_odontologo);
     $check->execute();
@@ -72,7 +76,6 @@ if ($es_admin && isset($_POST['id_odontologo']) && is_numeric($_POST['id_odontol
         redirigir('/ecodent/public/odontologo/calendario.php');
     }
 } else {
-    // Si es odontólogo, obtener su ID de la sesión
     $id_usuario = $_SESSION['id_usuario'];
     $stmt = $conexion->prepare("SELECT id_odontologo FROM odontologos WHERE id_usuario = ?");
     $stmt->bind_param("i", $id_usuario);
@@ -125,11 +128,13 @@ try {
         throw new Exception("Algunos slots ya no están disponibles: " . implode(", ", $errores));
     }
     
-    // Insertar UNA SOLA cita que cubre todo el rango
-    $sql_insertar = "INSERT INTO citas (id_odontologo, id_paciente, fecha_cita, hora_cita, hora_fin, estado, motivo)
-                     VALUES (?, ?, ?, ?, ?, 'programada', ?)";
+    // =============================================
+    // INSERTAR CITA CON id_tratamiento
+    // =============================================
+    $sql_insertar = "INSERT INTO citas (id_odontologo, id_paciente, id_tratamiento, fecha_cita, hora_cita, hora_fin, estado, motivo)
+                     VALUES (?, ?, ?, ?, ?, ?, 'programada', ?)";
     $stmt_insertar = $conexion->prepare($sql_insertar);
-    $stmt_insertar->bind_param("iissss", $id_odontologo, $id_paciente, $fecha, $hora_inicio, $hora_fin, $motivo);
+    $stmt_insertar->bind_param("iiissss", $id_odontologo, $id_paciente, $id_tratamiento, $fecha, $hora_inicio, $hora_fin, $motivo);
     
     if (!$stmt_insertar->execute()) {
         throw new Exception("Error al crear la cita: " . $conexion->error);
@@ -137,7 +142,18 @@ try {
     
     $id_cita = $conexion->insert_id;
     
-    // Confirmar transacción
+    // Registrar recordatorios
+    $fecha_recordatorio_24h = date('Y-m-d H:i:s', strtotime($fecha . ' ' . $hora_inicio . ' -24 hours'));
+    $fecha_recordatorio_1h = date('Y-m-d H:i:s', strtotime($fecha . ' ' . $hora_inicio . ' -1 hour'));
+    
+    $stmt_upd = $conexion->prepare("
+        UPDATE citas 
+        SET fecha_recordatorio_24h = ?, fecha_recordatorio_1h = ?
+        WHERE id_cita = ?
+    ");
+    $stmt_upd->bind_param("ssi", $fecha_recordatorio_24h, $fecha_recordatorio_1h, $id_cita);
+    $stmt_upd->execute();
+    
     $conexion->commit();
     
     $total_slots = is_array($slots_ocupados) ? count($slots_ocupados) : 0;

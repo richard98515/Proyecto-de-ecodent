@@ -56,7 +56,7 @@ if (!isset($_GET['id_cita'])) {
 $id_cita = (int)$_GET['id_cita'];
 
 // =============================================
-// OBTENER DATOS DE LA CITA
+// OBTENER DATOS DE LA CITA (CON TRATAMIENTO)
 // =============================================
 if ($es_odontologo && $id_odontologo) {
     // Odontólogo ve solo sus citas
@@ -66,10 +66,14 @@ if ($es_odontologo && $id_odontologo) {
                    u.email,
                    u.telefono,
                    u.fecha_registro as paciente_desde,
+                   t.id_tratamiento,
+                   t.nombre_tratamiento,
+                   t.estado as tratamiento_estado,
                    (SELECT COUNT(*) FROM citas WHERE id_paciente = c.id_paciente AND id_odontologo = ?) as total_citas_paciente
             FROM citas c
             JOIN pacientes p ON c.id_paciente = p.id_paciente
             JOIN usuarios u ON p.id_usuario = u.id_usuario
+            LEFT JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
             WHERE c.id_cita = ? AND c.id_odontologo = ?";
     
     $stmt = $conexion->prepare($sql);
@@ -87,12 +91,16 @@ if ($es_odontologo && $id_odontologo) {
                    u.fecha_registro as paciente_desde,
                    o.id_odontologo,
                    od.nombre_completo as nombre_odontologo,
+                   t.id_tratamiento,
+                   t.nombre_tratamiento,
+                   t.estado as tratamiento_estado,
                    (SELECT COUNT(*) FROM citas WHERE id_paciente = c.id_paciente) as total_citas_paciente
             FROM citas c
             JOIN pacientes p ON c.id_paciente = p.id_paciente
             JOIN usuarios u ON p.id_usuario = u.id_usuario
             JOIN odontologos o ON c.id_odontologo = o.id_odontologo
             JOIN usuarios od ON o.id_usuario = od.id_usuario
+            LEFT JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
             WHERE c.id_cita = ?";
     
     $stmt = $conexion->prepare($sql);
@@ -315,12 +323,46 @@ if (isset($_SESSION['error'])) {
                             <th>Motivo:</th>
                             <td><?php echo htmlspecialchars($cita['motivo'] ?? 'No especificado'); ?></td>
                         </tr>
+                        <tr>
+                            <th>Tratamiento:</th>
+                            <td>
+                                <?php if ($cita['id_tratamiento']): ?>
+                                    <span class="badge bg-info">
+                                        <i class="bi bi-file-medical"></i> 
+                                        <?php echo htmlspecialchars($cita['nombre_tratamiento']); ?>
+                                    </span>
+                                    <span class="badge bg-secondary ms-1">
+                                        <?php 
+                                            $estado_trat = $cita['tratamiento_estado'];
+                                            if ($estado_trat == 'pendiente') echo '⏳ Pendiente';
+                                            elseif ($estado_trat == 'en_progreso') echo '🔄 En progreso';
+                                            elseif ($estado_trat == 'completado') echo '✅ Completado';
+                                            else echo $estado_trat;
+                                        ?>
+                                    </span>
+                                    <a href="tratamiento_detalle.php?id=<?php echo $cita['id_tratamiento']; ?>" 
+                                       class="btn btn-sm btn-outline-info ms-2">
+                                        <i class="bi bi-eye"></i> Ver tratamiento
+                                    </a>
+                                <?php else: ?>
+                                    <span class="text-muted">
+                                        <i class="bi bi-question-circle"></i> No vinculado a tratamiento
+                                    </span>
+                                    <?php if (in_array($cita['estado'], ['programada', 'confirmada'])): ?>
+                                        <a href="vincular_tratamiento.php?id_cita=<?php echo $id_cita; ?>&id_paciente=<?php echo $cita['id_paciente']; ?>" 
+                                           class="btn btn-sm btn-warning ms-2">
+                                            <i class="bi bi-link"></i> Vincular tratamiento
+                                        </a>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
                         <?php if ($cita['llego_tarde']): ?>
                         <tr class="table-warning">
                             <th>Llegó tarde:</th>
                             <td class="text-danger">
                                 <i class="bi bi-clock-history"></i> Sí (<?php echo $cita['minutos_tarde']; ?> minutos de retraso)
-                             </td>
+                            </td>
                         </tr>
                         <?php endif; ?>
                         <?php if ($cita['fecha_cancelacion']): ?>
@@ -481,13 +523,13 @@ if (isset($_SESSION['error'])) {
                     </table>
                     
                     <div class="d-grid gap-2">
-                        <a href="historial_paciente.php?id_paciente=<?php echo $cita['id_paciente']; ?>" 
-                           class="btn btn-outline-primary">
+                        <a href="paciente_detalle.php?id=<?php echo $cita['id_paciente']; ?>" 
+                        class="btn btn-outline-primary">
                             <i class="bi bi-clock-history"></i> Ver historial completo del paciente
                         </a>
                         <?php if ($es_admin): ?>
                             <a href="paciente_detalle.php?id=<?php echo $cita['id_paciente']; ?>" 
-                               class="btn btn-outline-info">
+                            class="btn btn-outline-info">
                                 <i class="bi bi-eye"></i> Ver ficha del paciente
                             </a>
                         <?php endif; ?>

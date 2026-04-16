@@ -24,6 +24,8 @@ if (!isset($_GET['paciente']) || !is_numeric($_GET['paciente'])) {
 }
 
 $id_paciente = $_GET['paciente'];
+$return_to = $_GET['return_to'] ?? null;
+$fecha_retorno = $_GET['fecha'] ?? date('Y-m-d');
 
 // Obtener datos del paciente
 $stmt_paciente = $conexion->prepare("
@@ -85,8 +87,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id_tratamiento = $conexion->insert_id;
             
             $conexion->commit();
-            $_SESSION['exito'] = "Tratamiento registrado correctamente.";
-            redirigir('/ecodent/public/odontologo/tratamiento_detalle.php?id=' . $id_tratamiento);
+            
+            // =============================================
+            // REDIRECCIÓN SEGÚN PARÁMETRO return_to (CORREGIDO)
+            // =============================================
+            if ($return_to === 'agendar') {
+                $_SESSION['exito'] = "✅ Tratamiento creado correctamente. Ahora puedes seleccionarlo para la cita.";
+                redirigir('/ecodent/public/odontologo/agendar_cita.php?paciente=' . $id_paciente . '&fecha=' . $fecha_retorno);
+            } elseif ($return_to === 'vincular') {
+                $id_cita = $_GET['cita'] ?? 0;
+                $_SESSION['nuevo_tratamiento_id'] = $id_tratamiento;
+                redirigir('/ecodent/public/odontologo/vincular_tratamiento.php?id_cita=' . $id_cita . '&id_paciente=' . $id_paciente);
+            } else {
+                $_SESSION['exito'] = "Tratamiento registrado correctamente.";
+                redirigir('/ecodent/public/odontologo/tratamiento_detalle.php?id=' . $id_tratamiento);
+            }
             
         } catch (Exception $e) {
             $conexion->rollback();
@@ -114,27 +129,69 @@ require_once '../../includes/header.php';
     border-radius: 12px;
     margin-bottom: 20px;
 }
+
+.badge-return {
+    background: #28a745;
+    color: white;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+}
 </style>
 
 <div class="row mb-3">
     <div class="col-md-8">
         <h1><i class="bi bi-file-medical-fill text-success"></i> Nuevo Tratamiento</h1>
         <p class="lead">Registra un nuevo tratamiento para el paciente.</p>
+        <?php if ($return_to === 'agendar'): ?>
+            <div class="alert alert-success mt-2">
+                <i class="bi bi-info-circle"></i>
+                Estás creando un tratamiento desde el agendamiento de cita.
+                Al finalizar, volverás a la pantalla de agendar cita.
+            </div>
+        <?php elseif ($return_to === 'vincular'): ?>
+            <div class="alert alert-info mt-2">
+                <i class="bi bi-info-circle"></i>
+                Estás creando un tratamiento para vincular a una cita existente.
+                Al finalizar, volverás a la pantalla de vinculación.
+            </div>
+        <?php endif; ?>
     </div>
     <div class="col-md-4 text-end">
-        <a href="paciente_detalle.php?id=<?php echo $id_paciente; ?>" class="btn btn-secondary">
-            <i class="bi bi-arrow-left"></i> Volver al paciente
-        </a>
+        <?php if ($return_to === 'agendar'): ?>
+            <a href="agendar_cita.php?paciente=<?php echo $id_paciente; ?>&fecha=<?php echo $fecha_retorno; ?>" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Volver a agendar cita
+            </a>
+        <?php elseif ($return_to === 'vincular'): ?>
+            <a href="vincular_tratamiento.php?id_cita=<?php echo $_GET['cita'] ?? 0; ?>&id_paciente=<?php echo $id_paciente; ?>" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Volver a vincular
+            </a>
+        <?php else: ?>
+            <a href="paciente_detalle.php?id=<?php echo $id_paciente; ?>" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Volver al paciente
+            </a>
+        <?php endif; ?>
     </div>
 </div>
 
 <div class="paciente-info">
-    <div class="d-flex align-items-center">
-        <i class="bi bi-person-circle fs-2 me-3"></i>
-        <div>
-            <h5 class="mb-0">Paciente: <?php echo htmlspecialchars($paciente['nombre_completo']); ?></h5>
-            <small>ID: <?php echo $id_paciente; ?></small>
+    <div class="d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center">
+            <i class="bi bi-person-circle fs-2 me-3"></i>
+            <div>
+                <h5 class="mb-0">Paciente: <?php echo htmlspecialchars($paciente['nombre_completo']); ?></h5>
+                <small>ID: <?php echo $id_paciente; ?></small>
+            </div>
         </div>
+        <?php if ($return_to === 'agendar'): ?>
+            <span class="badge-return">
+                <i class="bi bi-calendar-plus"></i> Modo: Agendar cita
+            </span>
+        <?php elseif ($return_to === 'vincular'): ?>
+            <span class="badge-return">
+                <i class="bi bi-link"></i> Modo: Vincular a cita
+            </span>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -211,9 +268,19 @@ require_once '../../includes/header.php';
     </div>
     
     <div class="text-end">
-        <a href="paciente_detalle.php?id=<?php echo $id_paciente; ?>" class="btn btn-secondary btn-lg">
-            <i class="bi bi-x-circle"></i> Cancelar
-        </a>
+        <?php if ($return_to === 'agendar'): ?>
+            <a href="agendar_cita.php?paciente=<?php echo $id_paciente; ?>&fecha=<?php echo $fecha_retorno; ?>" class="btn btn-secondary btn-lg">
+                <i class="bi bi-x-circle"></i> Cancelar
+            </a>
+        <?php elseif ($return_to === 'vincular'): ?>
+            <a href="vincular_tratamiento.php?id_cita=<?php echo $_GET['cita'] ?? 0; ?>&id_paciente=<?php echo $id_paciente; ?>" class="btn btn-secondary btn-lg">
+                <i class="bi bi-x-circle"></i> Cancelar
+            </a>
+        <?php else: ?>
+            <a href="paciente_detalle.php?id=<?php echo $id_paciente; ?>" class="btn btn-secondary btn-lg">
+                <i class="bi bi-x-circle"></i> Cancelar
+            </a>
+        <?php endif; ?>
         <button type="submit" class="btn btn-success btn-lg">
             <i class="bi bi-save"></i> Registrar tratamiento
         </button>
