@@ -17,11 +17,20 @@ $id_paciente = $paciente['id_paciente'];
 // RESUMEN
 $stmt_resumen = $conexion->prepare("
     SELECT 
-        COALESCE((SELECT SUM(monto) FROM pagos WHERE id_paciente = ?), 0)        AS total_pagado,
-        COALESCE((SELECT SUM(saldo_pendiente) FROM tratamientos 
-                  WHERE id_paciente = ? AND estado != 'cancelado'), 0)            AS total_pendiente,
-        (SELECT COUNT(*) FROM pagos WHERE id_paciente = ?)                        AS num_pagos,
-        (SELECT COUNT(*) FROM tratamientos WHERE id_paciente = ?)                 AS num_tratamientos
+        COALESCE((SELECT SUM(p.monto) 
+                  FROM pagos p
+                  JOIN tratamientos t ON p.id_tratamiento = t.id_tratamiento
+                  WHERE t.id_paciente = ?), 0) AS total_pagado,
+        COALESCE((SELECT SUM(saldo_pendiente) 
+                  FROM tratamientos 
+                  WHERE id_paciente = ? AND estado != 'cancelado'), 0) AS total_pendiente,
+        (SELECT COUNT(p.id_pago)
+         FROM pagos p
+         JOIN tratamientos t ON p.id_tratamiento = t.id_tratamiento
+         WHERE t.id_paciente = ?) AS num_pagos,
+        (SELECT COUNT(*) 
+         FROM tratamientos 
+         WHERE id_paciente = ?) AS num_tratamientos
 ");
 $stmt_resumen->bind_param("iiii", $id_paciente, $id_paciente, $id_paciente, $id_paciente);
 $stmt_resumen->execute();

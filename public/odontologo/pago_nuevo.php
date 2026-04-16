@@ -199,14 +199,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         try {
             // Insertar pago
+            // INSERT CORREGIDO
+            // Insertar pago (SIN id_paciente)
             $stmt_pago = $conexion->prepare("
-                INSERT INTO pagos (id_paciente, id_tratamiento, id_usuario_registro, monto, concepto, 
-                                   fecha_pago, foto_comprobante, observaciones, metodo_pago)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO pagos (id_tratamiento, id_usuario_registro, monto, concepto, 
+                                fecha_pago, foto_comprobante, observaciones, metodo_pago)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $fecha_pago = date('Y-m-d');
-            $stmt_pago->bind_param("iiidsssss", 
-                $id_paciente, $id_tratamiento, $id_usuario, $monto, $concepto,
+            $stmt_pago->bind_param("iidsssss", 
+                $id_tratamiento, $id_usuario, $monto, $concepto,
                 $fecha_pago, $foto_comprobante, $observaciones, $metodo_pago
             );
             $stmt_pago->execute();

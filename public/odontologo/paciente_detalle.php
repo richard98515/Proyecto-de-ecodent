@@ -164,16 +164,15 @@ if ($es_odontologo && $id_odontologo) {
     $tratamientos = $stmt_tratamientos->get_result();
 }
 
-// Obtener pagos del paciente (todos)
 $stmt_pagos = $conexion->prepare("
     SELECT p.id_pago, p.monto, p.concepto, p.fecha_pago, p.metodo_pago, p.observaciones,
            t.nombre_tratamiento,
            u.nombre_completo as odontologo_nombre
     FROM pagos p
-    LEFT JOIN tratamientos t ON p.id_tratamiento = t.id_tratamiento
+    INNER JOIN tratamientos t ON p.id_tratamiento = t.id_tratamiento
     LEFT JOIN odontologos o ON t.id_odontologo = o.id_odontologo
     LEFT JOIN usuarios u ON o.id_usuario = u.id_usuario
-    WHERE p.id_paciente = ?
+    WHERE t.id_paciente = ?
     ORDER BY p.fecha_pago DESC
     LIMIT 10
 ");
