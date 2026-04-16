@@ -8,51 +8,26 @@ require_once '../../config/database.php';
 require_once '../../includes/funciones.php';
 require_once '../../includes/cancelaciones.php';
 require_once '../../includes/slots.php';
-date_default_timezone_set('America/La_Paz'); // Cambia según tu ubicación
+date_default_timezone_set('America/La_Paz');
 
-requerirRol('odontologo');
+// Verificar permisos (admin u odontólogo)
+$es_admin = esAdmin();
+$es_odontologo = esOdontologo();
+
+if (!estaLogueado() || (!$es_admin && !$es_odontologo)) {
+    redirigir('/ecodent/public/login.php');
+}
 
 $id_usuario = $_SESSION['id_usuario'];
+$id_odontologo = null;
 
-$stmt = $conexion->prepare("SELECT id_odontologo FROM odontologos WHERE id_usuario = ?");
-$stmt->bind_param("i", $id_usuario);
-$stmt->execute();
-$odontologo = $stmt->get_result()->fetch_assoc();
-$id_odontologo = $odontologo['id_odontologo'];
-
-$error = '';
-$exito = '';
-$cita  = null;
-$opciones_generadas = [];
-
-// =============================================
-// AJAX: buscar slots por fecha
-// =============================================
-if (isset($_GET['ajax_fecha']) && isset($_GET['fecha_buscar'])) {
-    $fecha_buscar = $_GET['fecha_buscar'];
-
-    // Validar formato
-    $fecha_obj = DateTime::createFromFormat('Y-m-d', $fecha_buscar);
-    if (!$fecha_obj || $fecha_buscar < date('Y-m-d')) {
-        echo json_encode(['error' => 'Fecha inválida o pasada']);
-        exit;
-    }
-
-    $slots = generarSlotsDisponibles($id_odontologo, $fecha_buscar, $conexion);
-    $resultado_ajax = [];
-    foreach ($slots as $slot) {
-        $resultado_ajax[] = [
-            'fecha'        => $fecha_buscar,
-            'hora'         => $slot['hora_inicio'],
-            'hora_fin'     => $slot['hora_fin'],
-            'fecha_formato'  => date('d/m/Y', strtotime($fecha_buscar)),
-            'hora_formato'   => $slot['hora_inicio_formato'],
-            'hora_fin_formato'=> $slot['hora_fin_formato']
-        ];
-    }
-    header('Content-Type: application/json');
-    echo json_encode($resultado_ajax);
-    exit;
+// Obtener ID del odontólogo (si es odontólogo)
+if ($es_odontologo) {
+    $stmt = $conexion->prepare("SELECT id_odontologo FROM odontologos WHERE id_usuario = ?");
+    $stmt->bind_param("i", $id_usuario);
+    $stmt->execute();
+    $odontologo_data = $stmt->get_result()->fetch_assoc();
+    $id_odontologo = $odontologo_data['id_odontologo'];
 }
 
 // =============================================
@@ -65,6 +40,7 @@ if (!isset($_GET['id_cita'])) {
 
 $id_cita = (int)$_GET['id_cita'];
 
+// Obtener datos de la cita
 $sql = "SELECT c.*, 
                p.id_paciente,
                u.nombre_completo as nombre_paciente,
@@ -73,10 +49,17 @@ $sql = "SELECT c.*,
         FROM citas c
         JOIN pacientes p ON c.id_paciente = p.id_paciente
         JOIN usuarios u ON p.id_usuario = u.id_usuario
-        WHERE c.id_cita = ? AND c.id_odontologo = ?";
+        WHERE c.id_cita = ?";
 
-$stmt = $conexion->prepare($sql);
-$stmt->bind_param("ii", $id_cita, $id_odontologo);
+if ($es_odontologo && $id_odontologo) {
+    $sql .= " AND c.id_odontologo = ?";
+    $stmt = $conexion->prepare($sql);
+    $stmt->bind_param("ii", $id_cita, $id_odontologo);
+} else {
+    $stmt = $conexion->prepare($sql);
+    $stmt->bind_param("i", $id_cita);
+}
+
 $stmt->execute();
 $cita = $stmt->get_result()->fetch_assoc();
 
@@ -86,19 +69,50 @@ if (!$cita) {
 }
 
 // =============================================
-// SLOTS INICIALES (próximos 5 días)
+// AJAX: buscar slots por fecha
 // =============================================
+if (isset($_GET['ajax_fecha']) && isset($_GET['fecha_buscar'])) {
+    $fecha_buscar = $_GET['fecha_buscar'];
+    $id_odonto_ajax = isset($_GET['id_odontologo']) ? (int)$_GET['id_odontologo'] : $id_odontologo;
+
+    $fecha_obj = DateTime::createFromFormat('Y-m-d', $fecha_buscar);
+    if (!$fecha_obj || $fecha_buscar < date('Y-m-d')) {
+        echo json_encode(['error' => 'Fecha inválida o pasada']);
+        exit;
+    }
+
+    $slots = generarSlotsDisponibles($id_odonto_ajax, $fecha_buscar, $conexion);
+    $resultado_ajax = [];
+    foreach ($slots as $slot) {
+        $resultado_ajax[] = [
+            'fecha'            => $fecha_buscar,
+            'hora'             => $slot['hora_inicio'],
+            'hora_fin'         => $slot['hora_fin'],
+            'fecha_formato'    => date('d/m/Y', strtotime($fecha_buscar)),
+            'hora_formato'     => $slot['hora_inicio_formato'],
+            'hora_fin_formato' => $slot['hora_fin_formato']
+        ];
+    }
+    header('Content-Type: application/json');
+    echo json_encode($resultado_ajax);
+    exit;
+}
+
+// =============================================
+// SLOTS INICIALES (próximos 7 días)
+// =============================================
+$opciones_generadas = [];
 $fecha_inicio = date('Y-m-d', strtotime('+1 day'));
-for ($i = 0; $i < 5; $i++) {
+for ($i = 0; $i < 7; $i++) {
     $fecha = date('Y-m-d', strtotime("+$i day", strtotime($fecha_inicio)));
     $slots = generarSlotsDisponibles($id_odontologo, $fecha, $conexion);
     foreach ($slots as $slot) {
         $opciones_generadas[] = [
-            'fecha'        => $fecha,
-            'hora'         => $slot['hora_inicio'],
-            'hora_fin'     => $slot['hora_fin'],
-            'fecha_formato'=> date('d/m/Y', strtotime($fecha)),
-            'hora_formato' => $slot['hora_inicio_formato'],
+            'fecha'            => $fecha,
+            'hora'             => $slot['hora_inicio'],
+            'hora_fin'         => $slot['hora_fin'],
+            'fecha_formato'    => date('d/m/Y', strtotime($fecha)),
+            'hora_formato'     => $slot['hora_inicio_formato'],
             'hora_fin_formato' => $slot['hora_fin_formato']
         ];
     }
@@ -107,15 +121,16 @@ for ($i = 0; $i < 5; $i++) {
 // =============================================
 // PROCESAR CANCELACIÓN (POST)
 // =============================================
+$whatsapp_link = null;
+$email_enviado = false;
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancelar'])) {
 
     if (!isset($_POST['token_csrf']) || !verificarTokenCSRF($_POST['token_csrf'])) {
         $error = 'Error de seguridad. Intente nuevamente.';
     } else {
-
         $motivo = sanitizar($_POST['motivo']);
 
-        // Reconstruir opciones desde POST
         $opciones_seleccionadas = [];
         if (isset($_POST['opciones_json'])) {
             $opciones_seleccionadas = json_decode($_POST['opciones_json'], true) ?? [];
@@ -124,24 +139,98 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancelar'])) {
         if (count($opciones_seleccionadas) < 2) {
             $error = 'Debes ofrecer al menos 2 opciones de reprogramación al paciente';
         } else {
-            $resultado_cancelacion = cancelarCitaOdontologo(
-                $id_cita,
-                $id_odontologo,
-                $motivo,
-                $opciones_seleccionadas,
-                $conexion
-            );
-
-           if ($resultado_cancelacion['exito']) {
-
-                if (isset($resultado_cancelacion['whatsapp'])) {
-                    $_SESSION['whatsapp_pendiente'] = $resultado_cancelacion['whatsapp'];
+            $conexion->begin_transaction();
+            
+            try {
+                // 1. Actualizar estado de la cita
+                $nuevo_estado = 'cancelada_doc';
+                $stmt = $conexion->prepare("
+                    UPDATE citas 
+                    SET estado = ?, 
+                        cancelado_por = ?, 
+                        fecha_cancelacion = NOW(), 
+                        motivo_cancelacion = ?
+                    WHERE id_cita = ?
+                ");
+                $stmt->bind_param("sisi", $nuevo_estado, $id_odontologo, $motivo, $id_cita);
+                $stmt->execute();
+                
+                // 2. Bloquear el slot
+                $hora_fin = date('H:i:s', strtotime($cita['fecha_cita'] . ' ' . $cita['hora_cita']) + (40 * 60));
+                $stmt_bloq = $conexion->prepare("
+                    INSERT INTO slots_bloqueados (id_odontologo, fecha, hora_inicio, hora_fin, motivo)
+                    VALUES (?, ?, ?, ?, ?)
+                ");
+                $motivo_bloqueo = "Cancelación por odontólogo: " . $motivo;
+                $stmt_bloq->bind_param("issss", $id_odontologo, $cita['fecha_cita'], $cita['hora_cita'], $hora_fin, $motivo_bloqueo);
+                $stmt_bloq->execute();
+                
+                // 3. Guardar opciones de reprogramación
+                $stmt_opcion = $conexion->prepare("
+                    INSERT INTO opciones_reprogramacion_cita 
+                    (id_cita_original, fecha_propuesta, hora_propuesta, id_odontologo)
+                    VALUES (?, ?, ?, ?)
+                ");
+                foreach ($opciones_seleccionadas as $opcion) {
+                    $stmt_opcion->bind_param("issi", $id_cita, $opcion['fecha'], $opcion['hora'], $id_odontologo);
+                    $stmt_opcion->execute();
                 }
-
-                $_SESSION['exito'] = $resultado_cancelacion['mensaje'];
-                redirigir('/ecodent/public/odontologo/calendario.php');
+                
+                // 4. Construir mensaje de notificación
+                $mensaje_notificacion = "🦷 *ECO-DENT - Cita Cancelada*\n\n";
+                $mensaje_notificacion .= "Hola " . $cita['nombre_paciente'] . ", lamentamos informarte que tu cita del *" . date('d/m/Y', strtotime($cita['fecha_cita'])) . "* a las *" . date('h:i A', strtotime($cita['hora_cita'])) . "* ha sido cancelada.\n\n";
+                $mensaje_notificacion .= "📋 *Motivo:* " . $motivo . "\n\n";
+                $mensaje_notificacion .= "📅 *Opciones de reprogramación disponibles:*\n";
+                
+                foreach ($opciones_seleccionadas as $index => $opcion) {
+                    $num = $index + 1;
+                    $fecha_mostrar = date('d/m/Y', strtotime($opcion['fecha']));
+                    $hora_mostrar = date('h:i A', strtotime($opcion['hora']));
+                    $mensaje_notificacion .= "  $num. $fecha_mostrar a las $hora_mostrar\n";
+                }
+                
+                $mensaje_notificacion .= "\nPor favor ingresa al sistema EcoDent para elegir tu nueva fecha.\n📞 Tel: 77112233";
+                
+                // 5. Guardar mensaje de EMAIL en mensajes_pendientes
+                $stmt_email = $conexion->prepare("
+                    INSERT INTO mensajes_pendientes (id_usuario, id_cita, tipo, canal, mensaje, email_destino, telefono_destino, enviado)
+                    VALUES (?, ?, 'cancelacion_doctor', 'email', ?, ?, ?, 0)
+                ");
+                $stmt_email->bind_param("iisss", $cita['id_paciente'], $id_cita, $mensaje_notificacion, $cita['email'], $cita['telefono']);
+                $stmt_email->execute();
+                
+                // 6. Guardar mensaje de WHATSAPP en mensajes_pendientes
+                $stmt_whatsapp = $conexion->prepare("
+                    INSERT INTO mensajes_pendientes (id_usuario, id_cita, tipo, canal, mensaje, email_destino, telefono_destino, enviado)
+                    VALUES (?, ?, 'cancelacion_doctor', 'whatsapp', ?, ?, ?, 0)
+                ");
+                $stmt_whatsapp->bind_param("iisss", $cita['id_paciente'], $id_cita, $mensaje_notificacion, $cita['email'], $cita['telefono']);
+                $stmt_whatsapp->execute();
+                
+                // 7. Generar enlace de WhatsApp para mostrar al doctor
+                $telefono_limpio = preg_replace('/[^0-9]/', '', $cita['telefono']);
+                if (substr($telefono_limpio, 0, 1) == '0') {
+                    $telefono_limpio = '591' . substr($telefono_limpio, 1);
+                } elseif (substr($telefono_limpio, 0, 2) != '59') {
+                    $telefono_limpio = '591' . $telefono_limpio;
+                }
+                $mensaje_wa_codificado = urlencode($mensaje_notificacion);
+                $whatsapp_link = "https://wa.me/{$telefono_limpio}?text={$mensaje_wa_codificado}";
+                
+                $conexion->commit();
+                
+                $_SESSION['exito'] = "✅ Cita cancelada exitosamente.";
+                $_SESSION['whatsapp_link'] = $whatsapp_link;
+                $_SESSION['whatsapp_telefono'] = $cita['telefono'];
+                $_SESSION['whatsapp_mensaje'] = $mensaje_notificacion;
+                
+                redirigir('/ecodent/public/odontologo/calendario.php?whatsapp_pendiente=1');
+                
+            } catch (Exception $e) {
+                $conexion->rollback();
+                $error = "Error al cancelar: " . $e->getMessage();
             }
-      }
+        }
     }
 }
 
@@ -151,7 +240,6 @@ require_once '../../includes/header.php';
 ?>
 
 <style>
-/* (Mantén tu CSS igual) */
 .slots-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -203,69 +291,20 @@ require_once '../../includes/header.php';
     justify-content: center;
     font-size: 12px;
     font-weight: bold;
-    line-height: 20px;
 }
-.opcion-slot .slot-fecha {
-    font-size: 0.78rem;
-    font-weight: 600;
-    margin-bottom: 4px;
-    opacity: 0.85;
-}
-.opcion-slot .slot-hora {
-    font-size: 1.25rem;
-    font-weight: 700;
-    margin-bottom: 2px;
-}
-.opcion-slot .slot-hora-fin {
-    font-size: 0.82rem;
-    font-weight: 500;
-    opacity: 0.85;
-    margin-bottom: 3px;
-}
-.opcion-slot .slot-badge {
-    font-size: 0.72rem;
-    background: rgba(255,255,255,0.35);
-    border-radius: 20px;
-    padding: 2px 8px;
-    display: inline-block;
-    margin-top: 4px;
-}
-.opcion-slot.seleccionada .slot-badge {
-    background: rgba(255,255,255,0.25);
-}
-
-.buscador-fecha {
-    background: #f8f9fa;
-    border-radius: 10px;
-    padding: 15px;
-    margin-bottom: 15px;
-    border: 1px solid #dee2e6;
-}
-.seleccionadas-preview {
-    background: #e8f5e9;
-    border: 2px solid #198754;
-    border-radius: 10px;
-    padding: 12px;
-    margin-top: 10px;
-    display: none;
-}
-.tag-opcion {
-    display: inline-block;
-    background: #198754;
-    color: white;
-    border-radius: 20px;
-    padding: 4px 12px;
-    margin: 3px;
-    font-size: 0.85rem;
-}
-.tag-opcion .quitar {
-    cursor: pointer;
-    margin-left: 6px;
-    opacity: 0.8;
-}
+.opcion-slot .slot-fecha { font-size: 0.78rem; font-weight: 600; margin-bottom: 4px; opacity: 0.85; }
+.opcion-slot .slot-hora { font-size: 1.25rem; font-weight: 700; margin-bottom: 2px; }
+.opcion-slot .slot-hora-fin { font-size: 0.82rem; font-weight: 500; opacity: 0.85; }
+.opcion-slot .slot-badge { font-size: 0.72rem; background: rgba(255,255,255,0.35); border-radius: 20px; padding: 2px 8px; display: inline-block; margin-top: 4px; }
+.buscador-fecha { background: #f8f9fa; border-radius: 10px; padding: 15px; margin-bottom: 15px; border: 1px solid #dee2e6; }
+.seleccionadas-preview { background: #e8f5e9; border: 2px solid #198754; border-radius: 10px; padding: 12px; margin-top: 10px; display: none; }
+.tag-opcion { display: inline-block; background: #198754; color: white; border-radius: 20px; padding: 4px 12px; margin: 3px; font-size: 0.85rem; }
+.tag-opcion .quitar { cursor: pointer; margin-left: 6px; opacity: 0.8; }
 .tag-opcion .quitar:hover { opacity: 1; }
 .contador-badge { font-size: 1rem; padding: 6px 14px; }
-#spinnerBusqueda { display: none; }
+.whatsapp-card { background: linear-gradient(135deg, #25D366 0%, #128C7E 100%); color: white; border: none; }
+.whatsapp-card .btn-whatsapp { background: white; color: #25D366; border: none; }
+.whatsapp-card .btn-whatsapp:hover { background: #f0f0f0; transform: scale(1.02); }
 </style>
 
 <div class="row">
@@ -285,22 +324,10 @@ require_once '../../includes/header.php';
             </div>
             <div class="card-body">
                 <table class="table table-bordered mb-0">
-                    <tr>
-                        <th>Paciente:</th>
-                        <td><?php echo htmlspecialchars($cita['nombre_paciente']); ?></td>
-                    </tr>
-                    <tr>
-                        <th>Fecha:</th>
-                        <td><?php echo date('d/m/Y', strtotime($cita['fecha_cita'])); ?></td>
-                    </tr>
-                    <tr>
-                        <th>Hora:</th>
-                        <td><?php echo date('h:i A', strtotime($cita['hora_cita'])); ?></td>
-                    </tr>
-                    <tr>
-                        <th>Motivo:</th>
-                        <td><?php echo htmlspecialchars($cita['motivo'] ?? 'No especificado'); ?></td>
-                    </tr>
+                    <tr><th>Paciente:</th><td><?php echo htmlspecialchars($cita['nombre_paciente']); ?></td></tr>
+                    <tr><th>Fecha:</th><td><?php echo date('d/m/Y', strtotime($cita['fecha_cita'])); ?></td></tr>
+                    <tr><th>Hora:</th><td><?php echo date('h:i A', strtotime($cita['hora_cita'])); ?></td></tr>
+                    <tr><th>Motivo:</th><td><?php echo htmlspecialchars($cita['motivo'] ?? 'No especificado'); ?></td></tr>
                 </table>
             </div>
         </div>
@@ -308,7 +335,7 @@ require_once '../../includes/header.php';
         <div class="alert alert-warning">
             <i class="bi bi-exclamation-triangle-fill"></i>
             <strong>Importante:</strong> Al cancelar, el slot quedará <strong>BLOQUEADO</strong>.
-            Si te recuperas antes, puedes desbloquearlo desde el calendario.
+            Se generarán opciones de reprogramación para el paciente.
         </div>
 
         <!-- Formulario de cancelación -->
@@ -317,7 +344,7 @@ require_once '../../includes/header.php';
                 <h5 class="mb-0"><i class="bi bi-send"></i> Confirmar cancelación</h5>
             </div>
             <div class="card-body">
-                <?php if ($error): ?>
+                <?php if (isset($error)): ?>
                     <div class="alert alert-danger"><?php echo $error; ?></div>
                 <?php endif; ?>
 
@@ -329,10 +356,9 @@ require_once '../../includes/header.php';
                         <label for="motivo" class="form-label">Motivo de cancelación *</label>
                         <textarea class="form-control" id="motivo" name="motivo" rows="3"
                                   placeholder="Ej: Emergencia personal, capacitación..." required></textarea>
-                        <div class="form-text">Este motivo será enviado al paciente por email.</div>
+                        <div class="form-text">Este motivo será enviado al paciente por email y WhatsApp.</div>
                     </div>
 
-                    <!-- Preview de opciones seleccionadas -->
                     <div class="seleccionadas-preview" id="seleccionadasPreview">
                         <strong><i class="bi bi-check-circle-fill text-success"></i>
                             Opciones seleccionadas: <span id="contadorSeleccionadas" class="badge bg-success contador-badge">0</span>
@@ -366,12 +392,8 @@ require_once '../../includes/header.php';
                 </h5>
             </div>
             <div class="card-body">
-
-                <!-- Buscador por fecha -->
                 <div class="buscador-fecha">
-                    <label class="form-label fw-bold">
-                        <i class="bi bi-search"></i> Buscar slots en otra fecha:
-                    </label>
+                    <label class="form-label fw-bold"><i class="bi bi-search"></i> Buscar slots en otra fecha:</label>
                     <div class="input-group">
                         <input type="date" class="form-control" id="fechaBuscar"
                                min="<?php echo date('Y-m-d', strtotime('+1 day')); ?>"
@@ -380,13 +402,12 @@ require_once '../../includes/header.php';
                             <i class="bi bi-search"></i> Buscar
                         </button>
                     </div>
-                    <div id="spinnerBusqueda" class="text-center mt-2">
+                    <div id="spinnerBusqueda" class="text-center mt-2" style="display:none;">
                         <div class="spinner-border spinner-border-sm text-success"></div>
                         <small class="ms-2">Buscando slots disponibles...</small>
                     </div>
                 </div>
 
-                <!-- Lista de slots -->
                 <div id="tituloFecha" class="fw-bold mb-2 text-muted">
                     <i class="bi bi-calendar3"></i> Próximos días disponibles:
                 </div>
@@ -394,16 +415,13 @@ require_once '../../includes/header.php';
                 <div class="slots-grid" id="listaOpciones">
                     <?php if (empty($opciones_generadas)): ?>
                         <div class="alert alert-warning">
-                            No hay slots disponibles. <a href="configurar_horarios.php">Configura más horarios</a>
+                            No hay slots disponibles en los próximos 7 días. <a href="configurar_horarios.php">Configura más horarios</a>
                         </div>
                     <?php else: ?>
                         <?php foreach ($opciones_generadas as $index => $opcion): ?>
                             <div class="opcion-slot" id="opcion_<?php echo $index; ?>"
                                  onclick="toggleOpcion(<?php echo $index; ?>, '<?php echo $opcion['fecha']; ?>', '<?php echo $opcion['hora']; ?>', '<?php echo $opcion['fecha_formato']; ?>', '<?php echo $opcion['hora_formato']; ?>', '<?php echo $opcion['hora_fin']; ?>', '<?php echo $opcion['hora_fin_formato']; ?>')">
-                                <div class="slot-fecha">
-                                    <i class="bi bi-calendar3"></i>
-                                    <?php echo $opcion['fecha_formato']; ?>
-                                </div>
+                                <div class="slot-fecha"><i class="bi bi-calendar3"></i> <?php echo $opcion['fecha_formato']; ?></div>
                                 <div class="slot-hora"><?php echo $opcion['hora_formato']; ?></div>
                                 <div class="slot-hora-fin">hasta <?php echo $opcion['hora_fin_formato']; ?></div>
                                 <div class="slot-badge">Disponible</div>
@@ -411,16 +429,13 @@ require_once '../../includes/header.php';
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </div>
-
             </div>
         </div>
     </div>
 </div>
 
 <script>
-// Array de opciones seleccionadas
 let opcionesSeleccionadas = [];
-let contadorDinamico = <?php echo count($opciones_generadas); ?>;
 
 function toggleOpcion(index, fecha, hora, fechaFormato, horaFormato, horaFin, horaFinFormato) {
     let id = 'opcion_' + index;
@@ -430,24 +445,12 @@ function toggleOpcion(index, fecha, hora, fechaFormato, horaFormato, horaFin, ho
     let existe = opcionesSeleccionadas.findIndex(o => o.key === key);
 
     if (existe === -1) {
-        // Agregar
-        opcionesSeleccionadas.push({ 
-            key, 
-            index, 
-            fecha, 
-            hora, 
-            fechaFormato, 
-            horaFormato,
-            horaFin,
-            horaFinFormato
-        });
+        opcionesSeleccionadas.push({ key, index, fecha, hora, fechaFormato, horaFormato, horaFin, horaFinFormato });
         if (div) div.classList.add('seleccionada');
     } else {
-        // Quitar
         opcionesSeleccionadas.splice(existe, 1);
         if (div) div.classList.remove('seleccionada');
     }
-
     actualizarFormulario();
 }
 
@@ -464,41 +467,26 @@ function quitarOpcion(key) {
 
 function actualizarFormulario() {
     let cantidad = opcionesSeleccionadas.length;
-    let preview  = document.getElementById('seleccionadasPreview');
-    let tags     = document.getElementById('tagSeleccionadas');
+    let preview = document.getElementById('seleccionadasPreview');
+    let tags = document.getElementById('tagSeleccionadas');
     let contador = document.getElementById('contadorSeleccionadas');
-    let btn      = document.getElementById('btnConfirmar');
-    let alerta   = document.getElementById('alertMinimo');
+    let btn = document.getElementById('btnConfirmar');
+    let alerta = document.getElementById('alertMinimo');
 
-    // Actualizar hidden JSON
-    let datos = opcionesSeleccionadas.map(o => ({
-        fecha: o.fecha, 
-        hora: o.hora,
-        hora_fin: o.horaFin,
-        fecha_formato: o.fechaFormato,
-        hora_formato: o.horaFormato,
-        hora_fin_formato: o.horaFinFormato
-    }));
+    let datos = opcionesSeleccionadas.map(o => ({ fecha: o.fecha, hora: o.hora, hora_fin: o.horaFin }));
     document.getElementById('opcionesJson').value = JSON.stringify(datos);
 
-    // Mostrar/ocultar preview
     if (cantidad > 0) {
         preview.style.display = 'block';
         contador.textContent = cantidad;
         tags.innerHTML = '';
         opcionesSeleccionadas.forEach(o => {
-            tags.innerHTML += `
-                <span class="tag-opcion">
-                    <i class="bi bi-calendar2-check"></i>
-                    ${o.fechaFormato} — ${o.horaFormato} (hasta ${o.horaFinFormato})
-                    <span class="quitar" onclick="quitarOpcion('${o.key}')">✕</span>
-                </span>`;
+            tags.innerHTML += `<span class="tag-opcion"><i class="bi bi-calendar2-check"></i> ${o.fechaFormato} — ${o.horaFormato} <span class="quitar" onclick="quitarOpcion('${o.key}')">✕</span></span>`;
         });
     } else {
         preview.style.display = 'none';
     }
 
-    // Habilitar botón si hay al menos 2
     if (cantidad >= 2) {
         btn.disabled = false;
         alerta.style.display = 'none';
@@ -513,28 +501,22 @@ function buscarSlotsPorFecha() {
     if (!fecha) { alert('Selecciona una fecha'); return; }
 
     let spinner = document.getElementById('spinnerBusqueda');
-    let lista   = document.getElementById('listaOpciones');
-    let titulo  = document.getElementById('tituloFecha');
+    let lista = document.getElementById('listaOpciones');
+    let titulo = document.getElementById('tituloFecha');
 
     spinner.style.display = 'block';
     lista.innerHTML = '';
 
-    fetch(`cancelar_cita.php?id_cita=<?php echo $id_cita; ?>&ajax_fecha=1&fecha_buscar=${fecha}`)
+    fetch(`cancelar_cita.php?id_cita=<?php echo $id_cita; ?>&ajax_fecha=1&fecha_buscar=${fecha}&id_odontologo=<?php echo $id_odontologo; ?>`)
         .then(r => r.json())
         .then(slots => {
             spinner.style.display = 'none';
-
-            // Formatear fecha para el título
             let partes = fecha.split('-');
             let fechaLegible = partes[2] + '/' + partes[1] + '/' + partes[0];
             titulo.innerHTML = `<i class="bi bi-calendar3"></i> Slots disponibles para <strong>${fechaLegible}</strong>:`;
 
             if (slots.error || slots.length === 0) {
-                lista.innerHTML = `
-                    <div class="alert alert-warning">
-                        <i class="bi bi-exclamation-triangle"></i>
-                        No hay slots disponibles para esta fecha. Prueba con otra.
-                    </div>`;
+                lista.innerHTML = `<div class="alert alert-warning"><i class="bi bi-exclamation-triangle"></i> No hay slots disponibles para esta fecha.</div>`;
                 return;
             }
 
@@ -548,14 +530,10 @@ function buscarSlotsPorFecha() {
                 div.className = 'opcion-slot' + (yaSeleccionada ? ' seleccionada' : '');
                 div.id = 'opcion_' + idx;
                 div.setAttribute('onclick', `toggleOpcionAjax('${idx}', '${slot.fecha}', '${slot.hora}', '${slot.fecha_formato}', '${slot.hora_formato}', '${slot.hora_fin}', '${slot.hora_fin_formato}')`);
-                div.innerHTML = `
-                    <div class="slot-fecha">
-                        <i class="bi bi-calendar3"></i> ${slot.fecha_formato}
-                    </div>
-                    <div class="slot-hora">${slot.hora_formato}</div>
-                    <div class="slot-hora-fin">hasta ${slot.hora_fin_formato}</div>
-                    <div class="slot-badge">Disponible</div>
-                `;
+                div.innerHTML = `<div class="slot-fecha"><i class="bi bi-calendar3"></i> ${slot.fecha_formato}</div>
+                                <div class="slot-hora">${slot.hora_formato}</div>
+                                <div class="slot-hora-fin">hasta ${slot.hora_fin_formato}</div>
+                                <div class="slot-badge">Disponible</div>`;
                 lista.appendChild(div);
             });
         })
@@ -565,35 +543,21 @@ function buscarSlotsPorFecha() {
         });
 }
 
-// Toggle para slots cargados por AJAX
 function toggleOpcionAjax(index, fecha, hora, fechaFormato, horaFormato, horaFin, horaFinFormato) {
-    let id  = 'opcion_' + index;
-    let div = document.getElementById(id);
+    let div = document.getElementById('opcion_' + index);
     let key = fecha + '_' + hora;
-
     let existe = opcionesSeleccionadas.findIndex(o => o.key === key);
 
     if (existe === -1) {
-        opcionesSeleccionadas.push({ 
-            key, 
-            index, 
-            fecha, 
-            hora, 
-            fechaFormato, 
-            horaFormato,
-            horaFin,
-            horaFinFormato
-        });
+        opcionesSeleccionadas.push({ key, index, fecha, hora, fechaFormato, horaFormato, horaFin, horaFinFormato });
         if (div) div.classList.add('seleccionada');
     } else {
         opcionesSeleccionadas.splice(existe, 1);
         if (div) div.classList.remove('seleccionada');
     }
-
     actualizarFormulario();
 }
 
-// Confirmar antes de enviar
 document.getElementById('formCancelacion').addEventListener('submit', function(e) {
     if (opcionesSeleccionadas.length < 2) {
         e.preventDefault();

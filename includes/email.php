@@ -7,8 +7,8 @@ use PHPMailer\PHPMailer\Exception;
 require_once __DIR__ . '/../vendor/autoload.php';
 
 define('SMTP_HOST', 'smtp.gmail.com');
-define('SMTP_USER', 'richardocsachoqueherrera985@gmail.com');  // ← tu gmail aquí
-define('SMTP_PASS', 'fzhl nxuc rnrj upet');   // ← clave de app 16 dígitos
+define('SMTP_USER', 'herreraocsachoquerichard985@gmail.com');  // ← tu gmail aquí
+define('SMTP_PASS', 'tvzn vbtp yact arqk');   // ← clave de app 16 dígitos
 define('SMTP_PORT', 587);
 define('SMTP_NAME', 'EcoDent');
 

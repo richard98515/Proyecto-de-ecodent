@@ -22,8 +22,13 @@ if (!$es_admin && !$es_odontologo) {
 
 $id_usuario = $_SESSION['id_usuario'];
 
-// OBTENER INFORMACIÓN DEL ODONTÓLOGO
-$stmt = $conexion->prepare("SELECT id_odontologo, duracion_cita_min, color_calendario, activo, especialidad_principal FROM odontologos WHERE id_usuario = ?");
+// OBTENER INFORMACIÓN DEL ODONTÓLOGO (incluyendo nombre completo)
+$stmt = $conexion->prepare("
+    SELECT o.id_odontologo, o.duracion_cita_min, o.color_calendario, o.activo, o.especialidad_principal, u.nombre_completo 
+    FROM odontologos o 
+    JOIN usuarios u ON o.id_usuario = u.id_usuario 
+    WHERE o.id_usuario = ?
+");
 if (!$stmt) {
     die("Error en la consulta: " . $conexion->error);
 }
@@ -35,6 +40,7 @@ $resultado = $stmt->get_result();
 // Variable para almacenar el odontólogo seleccionado
 $odontologo = null;
 $id_odontologo = null;
+$nombre_odontologo = null;
 
 // Si es ADMIN y no tiene odontólogo asociado, mostrar mensaje especial
 if ($resultado->num_rows === 0) {
@@ -44,7 +50,12 @@ if ($resultado->num_rows === 0) {
             $id_odontologo_seleccionado = (int)$_GET['ver_odontologo'];
             
             // Verificar que el odontólogo existe
-            $check = $conexion->prepare("SELECT id_odontologo, duracion_cita_min, color_calendario, activo, especialidad_principal FROM odontologos WHERE id_odontologo = ? AND activo = 1");
+            $check = $conexion->prepare("
+                SELECT o.id_odontologo, o.duracion_cita_min, o.color_calendario, o.activo, o.especialidad_principal, u.nombre_completo 
+                FROM odontologos o 
+                JOIN usuarios u ON o.id_usuario = u.id_usuario 
+                WHERE o.id_odontologo = ? AND o.activo = 1
+            ");
             $check->bind_param("i", $id_odontologo_seleccionado);
             $check->execute();
             $check_result = $check->get_result();
@@ -52,6 +63,7 @@ if ($resultado->num_rows === 0) {
             if ($check_result->num_rows > 0) {
                 $odontologo = $check_result->fetch_assoc();
                 $id_odontologo = $odontologo['id_odontologo'];
+                $nombre_odontologo = $odontologo['nombre_completo'];
                 $_SESSION['admin_viendo_odontologo'] = $id_odontologo;
                 // Saltar a mostrar calendario
                 goto mostrar_calendario;
@@ -119,6 +131,8 @@ if ($resultado->num_rows === 0) {
 
 // Si llegamos aquí, el usuario tiene odontólogo asociado
 $odontologo = $resultado->fetch_assoc();
+$id_odontologo = $odontologo['id_odontologo'];
+$nombre_odontologo = $odontologo['nombre_completo'];
 
 mostrar_calendario:
 
@@ -127,17 +141,18 @@ if ($es_admin && isset($_GET['ver_odontologo']) && is_numeric($_GET['ver_odontol
     $id_odontologo_temp = (int)$_GET['ver_odontologo'];
     // Verificar que existe
     $check = $conexion->prepare("
-    SELECT 
-        o.id_odontologo,
-        o.duracion_cita_min,
-        o.color_calendario,
-        o.activo,
-        o.especialidad_principal,
-        u.nombre_completo
-    FROM odontologos o
-    INNER JOIN usuarios u ON o.id_usuario = u.id_usuario
-    WHERE o.id_odontologo = ?")
-    ;$check->bind_param("i", $id_odontologo_temp);
+        SELECT 
+            o.id_odontologo,
+            o.duracion_cita_min,
+            o.color_calendario,
+            o.activo,
+            o.especialidad_principal,
+            u.nombre_completo
+        FROM odontologos o
+        INNER JOIN usuarios u ON o.id_usuario = u.id_usuario
+        WHERE o.id_odontologo = ?
+    ");
+    $check->bind_param("i", $id_odontologo_temp);
     $check->execute();
     $check_result = $check->get_result();
     if ($check_result->num_rows > 0) {
@@ -152,13 +167,19 @@ if ($es_admin && isset($_GET['ver_odontologo']) && is_numeric($_GET['ver_odontol
 } else if ($es_admin && isset($_SESSION['admin_viendo_odontologo'])) {
     // Si ya tenía seleccionado un odontólogo anteriormente
     $id_odontologo_temp = $_SESSION['admin_viendo_odontologo'];
-    $check = $conexion->prepare("SELECT id_odontologo, duracion_cita_min, color_calendario, activo, especialidad_principal FROM odontologos WHERE id_odontologo = ?");
+    $check = $conexion->prepare("
+        SELECT o.id_odontologo, o.duracion_cita_min, o.color_calendario, o.activo, o.especialidad_principal, u.nombre_completo 
+        FROM odontologos o 
+        JOIN usuarios u ON o.id_usuario = u.id_usuario 
+        WHERE o.id_odontologo = ?
+    ");
     $check->bind_param("i", $id_odontologo_temp);
     $check->execute();
     $check_result = $check->get_result();
     if ($check_result->num_rows > 0) {
         $odontologo_ver = $check_result->fetch_assoc();
         $id_odontologo = $odontologo_ver['id_odontologo'];
+        $nombre_odontologo = $odontologo_ver['nombre_completo'];
         $odontologo = $odontologo_ver;
     } else {
         $id_odontologo = $odontologo['id_odontologo'];
@@ -275,6 +296,32 @@ $hoy                  = date('Y-m-d');
 
 require_once '../../includes/header.php';
 
+// Mostrar mensaje de WhatsApp pendiente después de cancelar
+if (isset($_SESSION['whatsapp_link']) && isset($_GET['whatsapp_pendiente'])) {
+    $whatsapp_link = $_SESSION['whatsapp_link'];
+    $whatsapp_telefono = $_SESSION['whatsapp_telefono'];
+    ?>
+    <div class="alert whatsapp-card alert-dismissible fade show mb-4" role="alert">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+            <div>
+                <i class="bi bi-whatsapp fs-2 me-2"></i>
+                <strong>📱 ¡Cita cancelada correctamente!</strong>
+                <p class="mb-0 small mt-1">Se ha enviado un email al paciente. También puedes notificarle por WhatsApp:</p>
+            </div>
+            <a href="<?php echo $whatsapp_link; ?>" 
+            target="_blank" 
+            class="btn btn-light btn-whatsapp"
+            onclick="fetch('../../cron/marcar_whatsapp_enviado.php?id_cita=<?php echo $id_cita_pendiente; ?>')">
+                <i class="bi bi-whatsapp"></i> Enviar WhatsApp ahora
+            </a>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
+    </div>
+    <?php
+    unset($_SESSION['whatsapp_link']);
+    unset($_SESSION['whatsapp_telefono']);
+}
+
 // Mensajes de sesión
 if (isset($_SESSION['exito'])) { 
     $exito = $_SESSION['exito']; 
@@ -296,10 +343,10 @@ if ($es_admin && isset($_SESSION['admin_viendo_odontologo']) && $_SESSION['admin
     $stmt_nombre->bind_param("i", $_SESSION['admin_viendo_odontologo']);
     $stmt_nombre->execute();
     $nombre_result = $stmt_nombre->get_result();
-    if ($nombre_odontologo = $nombre_result->fetch_assoc()) {
+    if ($nombre_odontologo_temp = $nombre_result->fetch_assoc()) {
         ?>
         <div class="alert alert-info alert-dismissible fade show">
-            <i class="bi bi-eye"></i> Estás viendo el calendario de: <strong><?php echo htmlspecialchars($nombre_odontologo['nombre_completo']); ?></strong>
+            <i class="bi bi-eye"></i> Estás viendo el calendario de: <strong><?php echo htmlspecialchars($nombre_odontologo_temp['nombre_completo']); ?></strong>
             <a href="/ecodent/public/odontologo/calendario.php?reset=1" class="float-end">Ver mi calendario</a>
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
@@ -479,14 +526,15 @@ if ($es_admin && isset($_SESSION['admin_viendo_odontologo']) && $_SESSION['admin
 <div class="row mb-3">
     <div class="col-md-8">
         <h1><i class="bi bi-calendar-week"></i> Mi Calendario — <?php echo date('d/m/Y'); ?></h1>
+        
         <p class="mb-0">
         Bienvenido, 
         <strong>
         <?php 
-        if ($es_admin) {
+        if ($es_admin && isset($nombre_odontologo)) {
             echo htmlspecialchars("Administrador - Calendario del odontólogo: " . $nombre_odontologo);
         } else {
-            echo htmlspecialchars($nombre_odontologo);
+            echo htmlspecialchars($odontologo['nombre_completo'] ?? 'Odontólogo');
         }
         ?>
         </strong>

@@ -121,7 +121,12 @@ $token_csrf = generarTokenCSRF();
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Contraseña</label>
-                        <input type="password" class="form-control" name="contrasena" required>
+                        <div class="input-group">
+                            <input type="password" class="form-control" name="contrasena" id="contrasena" required>
+                            <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                                <i class="bi bi-eye" id="iconoOjo"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="mb-3 form-check">
                         <input type="checkbox" class="form-check-input" id="recordar">
@@ -155,5 +160,15 @@ $token_csrf = generarTokenCSRF();
         </div>
     </div>
 </div>
+<script>
+const inputPass = document.getElementById('contrasena');
+const toggleBtn = document.getElementById('togglePassword');
+const iconoOjo  = document.getElementById('iconoOjo');
 
+toggleBtn.addEventListener('click', () => {
+    const visible = inputPass.type === 'text';
+    inputPass.type = visible ? 'password' : 'text';
+    iconoOjo.className = visible ? 'bi bi-eye' : 'bi bi-eye-slash';
+});
+</script>
 <?php require_once '../includes/footer.php'; ?>

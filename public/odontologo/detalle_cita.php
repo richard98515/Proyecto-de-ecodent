@@ -1,7 +1,8 @@
 <?php
 // public/odontologo/detalle_cita.php
 // Muestra el detalle de una cita específica
-// ADMIN y ODONTÓLOGO pueden: ver, marcar asistencia, registrar tarde, marcar ausente, cancelar
+// ADMIN y ODONTÓLOGO pueden: ver, marcar asistencia, registrar tarde, marcar ausente
+// La CANCELACIÓN se maneja en cancelar_cita.php
 
 // =============================================
 // PROCESAMIENTO PRIMERO
@@ -107,11 +108,21 @@ if (!$cita) {
 }
 
 // =============================================
+// FUNCIÓN PARA LIMPIAR RESULTADOS DE MySQL
+// =============================================
+function limpiarResultados($conexion) {
+    while ($conexion->more_results() && $conexion->next_result()) {
+        if ($result = $conexion->store_result()) {
+            $result->free();
+        }
+    }
+}
+
+// =============================================
 // PROCESAR CAMBIO DE ESTADO (Admin y Odontólogo)
 // =============================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cambiar_estado'])) {
     
-    // Verificar permisos: admin o el odontólogo dueño de la cita
     $permiso = false;
     if ($es_admin) {
         $permiso = true;
@@ -137,7 +148,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cambiar_estado'])) {
         $actualizar = true;
         $mensaje = "⚠️ Paciente marcado como ausente";
         
-        // Actualizar contador de ausencias en paciente
         $sql_ausencia = "UPDATE pacientes SET ausencias_sin_aviso = ausencias_sin_aviso + 1,
                          fecha_ultima_ausencia = CURDATE()
                          WHERE id_paciente = ?";
@@ -145,10 +155,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cambiar_estado'])) {
         $stmt_ausencia->bind_param("i", $cita['id_paciente']);
         $stmt_ausencia->execute();
         
-        // Ejecutar procedimiento para actualizar estado de cuenta
         $stmt_proc = $conexion->prepare("CALL verificar_estado_cuenta(?)");
         $stmt_proc->bind_param("i", $cita['id_paciente']);
         $stmt_proc->execute();
+        limpiarResultados($conexion);
+        $stmt_proc->close();
         
     } elseif ($nuevo_estado == 'llego_tarde' && in_array($cita['estado'], ['programada', 'confirmada'])) {
         $minutos_tarde = (int)$_POST['minutos_tarde'];
@@ -163,10 +174,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cambiar_estado'])) {
         $stmt_tarde->bind_param("i", $cita['id_paciente']);
         $stmt_tarde->execute();
         
-        // Ejecutar procedimiento para actualizar estado de cuenta
         $stmt_proc = $conexion->prepare("CALL verificar_estado_cuenta(?)");
         $stmt_proc->bind_param("i", $cita['id_paciente']);
         $stmt_proc->execute();
+        limpiarResultados($conexion);
+        $stmt_proc->close();
     }
     
     if ($actualizar) {
@@ -186,54 +198,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cambiar_estado'])) {
 }
 
 // =============================================
-// PROCESAR CANCELACIÓN (Admin y Odontólogo)
+// PROCESAR CANCELACIÓN SOLO PARA ADMIN (directa)
 // =============================================
-if (isset($_POST['cancelar_cita']) && ($es_admin || $es_odontologo)) {
+if (isset($_POST['cancelar_cita_admin']) && $es_admin) {
     
     $motivo = sanitizar($_POST['motivo_cancelacion']);
-    $quien_cancela = $es_admin ? 'admin' : 'odontologo';
-    $id_quien_cancela = $es_admin ? $_SESSION['id_usuario'] : $id_odontologo;
+    $id_quien_cancela = $_SESSION['id_usuario'];
     
-    // Para admin, el slot queda disponible (no se bloquea)
-    // Para odontólogo, el slot se bloquea automáticamente
-    $nuevo_estado = ($es_admin) ? 'cancelada_pac' : 'cancelada_doc';
+    $stmt = $conexion->prepare("
+        UPDATE citas 
+        SET estado = 'cancelada_pac', 
+            cancelado_por = ?, 
+            fecha_cancelacion = NOW(), 
+            motivo_cancelacion = ?
+        WHERE id_cita = ?
+    ");
+    $stmt->bind_param("isi", $id_quien_cancela, $motivo, $id_cita);
     
-    $conexion->begin_transaction();
-    
-    try {
-        // Actualizar cita
-        $stmt = $conexion->prepare("
-            UPDATE citas 
-            SET estado = ?, 
-                cancelado_por = ?, 
-                fecha_cancelacion = NOW(), 
-                motivo_cancelacion = ?
-            WHERE id_cita = ?
-        ");
-        $stmt->bind_param("sisi", $nuevo_estado, $id_quien_cancela, $motivo, $id_cita);
-        $stmt->execute();
-        
-        // Si es odontólogo quien cancela, bloquear el slot
-        if (!$es_admin) {
-            $hora_fin = date('H:i:s', strtotime($cita['fecha_cita'] . ' ' . $cita['hora_cita']) + (40 * 60));
-            $stmt_bloq = $conexion->prepare("
-                INSERT INTO slots_bloqueados (id_odontologo, fecha, hora_inicio, hora_fin, motivo)
-                VALUES (?, ?, ?, ?, ?)
-            ");
-            $motivo_bloqueo = "Cancelación por odontólogo: " . $motivo;
-            $stmt_bloq->bind_param("issss", $cita['id_odontologo'], $cita['fecha_cita'], $cita['hora_cita'], $hora_fin, $motivo_bloqueo);
-            $stmt_bloq->execute();
-        }
-        
-        $conexion->commit();
-        $_SESSION['exito'] = "🗑️ Cita cancelada exitosamente";
-        redirigir('/ecodent/public/odontologo/calendario.php');
-        
-    } catch (Exception $e) {
-        $conexion->rollback();
-        $_SESSION['error'] = "Error al cancelar: " . $e->getMessage();
-        redirigir('/ecodent/public/odontologo/detalle_cita.php?id_cita=' . $id_cita);
+    if ($stmt->execute()) {
+        $_SESSION['exito'] = "🗑️ Cita cancelada exitosamente. El slot queda disponible para otros pacientes.";
+    } else {
+        $_SESSION['error'] = "Error al cancelar la cita";
     }
+    redirigir('/ecodent/public/odontologo/calendario.php');
 }
 
 // =============================================
@@ -299,7 +286,7 @@ if (isset($_SESSION['error'])) {
                                 - 
                                 <strong><?php echo date('h:i A', strtotime($cita['hora_fin'])); ?></strong>
                                 <span class="badge bg-secondary ms-2">40 min</span>
-                            </td>
+                             </td>
                         </tr>
                         <?php if ($es_admin && isset($cita['nombre_odontologo'])): ?>
                         <tr>
@@ -322,7 +309,7 @@ if (isset($_SESSION['error'])) {
                                 $estado_info = $estados[$cita['estado']] ?? ['badge bg-secondary', $cita['estado']];
                                 ?>
                                 <span class="<?php echo $estado_info[0]; ?>"><?php echo $estado_info[1]; ?></span>
-                            </td>
+                             </td>
                         </tr>
                         <tr>
                             <th>Motivo:</th>
@@ -333,7 +320,7 @@ if (isset($_SESSION['error'])) {
                             <th>Llegó tarde:</th>
                             <td class="text-danger">
                                 <i class="bi bi-clock-history"></i> Sí (<?php echo $cita['minutos_tarde']; ?> minutos de retraso)
-                            </td>
+                             </td>
                         </tr>
                         <?php endif; ?>
                         <?php if ($cita['fecha_cancelacion']): ?>
@@ -398,42 +385,55 @@ if (isset($_SESSION['error'])) {
                     </div>
                 </div>
                 
-                <!-- Botón Cancelar Cita -->
-                <div class="card mb-3 border-danger">
-                    <div class="card-header bg-danger text-white">
-                        <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Cancelar Cita</h5>
-                    </div>
-                    <div class="card-body">
-                        <form method="POST" action="" onsubmit="return confirm('¿Estás seguro de cancelar esta cita?\n\nEsta acción no se puede deshacer.')">
-                            <div class="mb-3">
-                                <label class="form-label">Motivo de cancelación:</label>
-                                <select name="motivo_cancelacion" class="form-select" required>
-                                    <option value="">Seleccionar motivo...</option>
-                                    <option value="paciente_no_pudo_asistir">Paciente no pudo asistir</option>
-                                    <option value="emergencia_paciente">Emergencia del paciente</option>
-                                    <?php if (!$es_admin): ?>
-                                    <option value="emergencia_doctor">Emergencia del doctor</option>
-                                    <option value="capacitacion">Capacitación / Curso</option>
-                                    <option value="problemas_tecnicos">Problemas técnicos</option>
-                                    <?php endif; ?>
-                                    <option value="otro">Otro motivo</option>
-                                </select>
+                <!-- Botón Cancelar Cita - REDIRIGE A cancelar_cita.php para odontólogo -->
+                <?php if (!$es_admin): ?>
+                    <div class="card mb-3 border-danger">
+                        <div class="card-header bg-danger text-white">
+                            <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Cancelar Cita</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-warning">
+                                <i class="bi bi-info-circle"></i>
+                                <strong>Cancelación por odontólogo:</strong>
+                                <ul class="mb-0 mt-2">
+                                    <li>El slot quedará BLOQUEADO automáticamente</li>
+                                    <li>Podrás seleccionar opciones de reprogramación</li>
+                                    <li>El paciente recibirá un email con las opciones</li>
+                                </ul>
                             </div>
-                            <button type="submit" name="cancelar_cita" class="btn btn-danger w-100">
-                                <i class="bi bi-x-circle"></i> Cancelar Cita
-                            </button>
-                        </form>
-                        <?php if (!$es_admin): ?>
-                            <small class="text-muted d-block mt-2">
-                                <i class="bi bi-info-circle"></i> Al cancelar, este horario quedará BLOQUEADO automáticamente.
-                            </small>
-                        <?php else: ?>
+                            
+                            <a href="cancelar_cita.php?id_cita=<?php echo $id_cita; ?>" class="btn btn-danger w-100">
+                                <i class="bi bi-calendar-x"></i> Cancelar Cita y Ofrecer Reprogramación
+                            </a>
+                        </div>
+                    </div>
+                <?php else: ?>
+                    <!-- Admin: cancelación directa -->
+                    <div class="card mb-3 border-danger">
+                        <div class="card-header bg-danger text-white">
+                            <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Cancelar Cita (Admin)</h5>
+                        </div>
+                        <div class="card-body">
+                            <form method="POST" action="" onsubmit="return confirm('¿Cancelar esta cita como administrador?\n\nEl slot quedará DISPONIBLE para otros pacientes.')">
+                                <div class="mb-3">
+                                    <label class="form-label">Motivo de cancelación:</label>
+                                    <select name="motivo_cancelacion" class="form-select" required>
+                                        <option value="">Seleccionar motivo...</option>
+                                        <option value="administrativo">Razón administrativa</option>
+                                        <option value="error_sistema">Error en el sistema</option>
+                                        <option value="otro">Otro motivo</option>
+                                    </select>
+                                </div>
+                                <button type="submit" name="cancelar_cita_admin" class="btn btn-danger w-100">
+                                    <i class="bi bi-x-circle"></i> Cancelar Cita (Admin)
+                                </button>
+                            </form>
                             <small class="text-muted d-block mt-2">
                                 <i class="bi bi-info-circle"></i> Como admin, el slot quedará DISPONIBLE para otros pacientes.
                             </small>
-                        <?php endif; ?>
+                        </div>
                     </div>
-                </div>
+                <?php endif; ?>
             <?php endif; ?>
             
             <!-- Botón para volver -->
@@ -494,6 +494,47 @@ if (isset($_SESSION['error'])) {
                     </div>
                 </div>
             </div>
+            
+            <!-- Opciones de reprogramación existentes (si las hay) -->
+            <?php
+            $stmt_opciones = $conexion->prepare("
+                SELECT * FROM opciones_reprogramacion_cita 
+                WHERE id_cita_original = ? 
+                ORDER BY fecha_propuesta ASC
+            ");
+            $stmt_opciones->bind_param("i", $id_cita);
+            $stmt_opciones->execute();
+            $opciones_existentes = $stmt_opciones->get_result();
+            ?>
+            
+            <?php if ($opciones_existentes->num_rows > 0): ?>
+            <div class="card mb-3 border-warning">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0"><i class="bi bi-calendar-plus"></i> Opciones de Reprogramación</h5>
+                </div>
+                <div class="card-body">
+                    <p class="small">El paciente puede elegir una de estas opciones:</p>
+                    <div class="list-group">
+                        <?php while($opcion = $opciones_existentes->fetch_assoc()): ?>
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <i class="bi bi-calendar-date"></i>
+                                        <strong><?php echo date('d/m/Y', strtotime($opcion['fecha_propuesta'])); ?></strong>
+                                        a las <strong><?php echo date('h:i A', strtotime($opcion['hora_propuesta'])); ?></strong>
+                                    </div>
+                                    <?php if ($opcion['seleccionada']): ?>
+                                        <span class="badge bg-success">✓ Seleccionada</span>
+                                    <?php else: ?>
+                                        <span class="badge bg-secondary">Pendiente</span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endwhile; ?>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
             
             <!-- Historial de modificaciones -->
             <?php

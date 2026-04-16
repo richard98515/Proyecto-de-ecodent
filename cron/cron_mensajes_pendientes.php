@@ -1,16 +1,16 @@
 <?php
-set_time_limit(300); // 5 minutos de límite
+set_time_limit(300);
 ini_set('max_execution_time', 300);
 // =====================================================
 // cron/cron_mensajes_pendientes.php
-// Procesa los mensajes de cancelación acumulados en la tabla
-// Ejecutar cada hora junto con cron_recordatorios.php
+// Procesa los mensajes pendientes de la tabla mensajes_pendientes
+// Se ejecuta desde: C:\xampp\htdocs\ecodent\cron\ejecutar_todos.bat
 // =====================================================
 
 require_once __DIR__ . '/../includes/email.php';
-require_once __DIR__ . '/../config/database.php'; // tu archivo de conexión
+require_once __DIR__ . '/../config/database.php';
 
-$conn = $conexion; // tu variable se llama $conexion
+$conn = $conexion;
 
 // Obtener todos los mensajes de email pendientes (enviado = 0)
 $sql = "
@@ -40,27 +40,37 @@ $enviados = 0;
 $errores  = 0;
 
 while ($msg = $result->fetch_assoc()) {
+
     // Usar email_destino si existe, si no usar el del usuario
     $email_final = !empty($msg['email_destino']) ? $msg['email_destino'] : $msg['email'];
 
     // Determinar asunto según tipo
     switch ($msg['tipo']) {
+        case 'confirmacion':
+            $asunto = '🦷 EcoDent - Confirmación de cita';
+            break;
+        case 'recordatorio_24h':
+            $asunto = '🦷 EcoDent - Recordatorio: tu cita es mañana';
+            break;
+        case 'recordatorio_1h':
+            $asunto = '🦷 EcoDent - Tu cita es en 1 hora';
+            break;
         case 'cancelacion':
             $asunto = '🦷 EcoDent - Tu cita fue cancelada';
             break;
-        case 'confirmacion':
-            $asunto = '🦷 EcoDent - Confirmación de cita';
+        case 'cancelacion_doctor':
+            $asunto = '🦷 EcoDent - Cita cancelada por el odontólogo';
             break;
         case 'reprogramacion':
             $asunto = '🦷 EcoDent - Tu cita fue reprogramada';
             break;
         default:
-            // Tipo vacío '' o desconocido = cancelación por odontólogo
+            // Tipo vacío '' o desconocido = registros viejos
             $asunto = '🦷 EcoDent - Cita cancelada por el odontólogo';
             break;
     }
 
-    // Construir HTML del email con el mensaje ya guardado
+    // Construir HTML del email con el mensaje ya guardado en la BD
     $cuerpo = "
     <div style='font-family:Arial,sans-serif;max-width:480px;margin:auto;border:1px solid #ddd;border-radius:12px;overflow:hidden'>
         <div style='background:#0d6efd;padding:24px;text-align:center'>
@@ -78,17 +88,16 @@ while ($msg = $result->fetch_assoc()) {
     $ok = enviarEmail($email_final, $msg['nombre_completo'], $asunto, $cuerpo);
 
     if ($ok) {
-        // Marcar como enviado
         $upd = $conn->prepare("UPDATE mensajes_pendientes SET enviado = 1, fecha_envio = NOW() WHERE id_mensaje = ?");
         $upd->bind_param('i', $msg['id_mensaje']);
         $upd->execute();
-        echo "[OK] Mensaje ID {$msg['id_mensaje']} enviado a {$email_final}\n";
+        echo "[OK] ID {$msg['id_mensaje']} | tipo: {$msg['tipo']} | enviado a: {$email_final}\n";
         $enviados++;
     } else {
-        echo "[ERROR] Mensaje ID {$msg['id_mensaje']} falló para {$email_final}\n";
+        echo "[ERROR] ID {$msg['id_mensaje']} | tipo: {$msg['tipo']} | fallo para: {$email_final}\n";
         $errores++;
     }
 }
 
-echo "✅ Procesados: {$enviados} enviados, {$errores} errores.\n";
+echo "\n✅ Total: {$enviados} enviados, {$errores} errores.\n";
 ?>
