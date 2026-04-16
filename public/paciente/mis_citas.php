@@ -7,7 +7,6 @@
 // =============================================
 require_once '../../config/database.php';
 require_once '../../includes/funciones.php';
-require_once '../../includes/cancelaciones.php';
 
 // Verificar autenticación
 if (!estaLogueado()) {
@@ -59,31 +58,17 @@ if ($es_admin && isset($_GET['id_paciente']) && is_numeric($_GET['id_paciente'])
 }
 
 // =============================================
-// PROCESAR CANCELACIÓN (si viene por GET)
+// FUNCIÓN PARA VERIFICAR SI PUEDE MODIFICAR/CANCELAR (24 HORAS)
 // =============================================
-if (isset($_GET['cancelar']) && isset($_GET['id_cita'])) {
-    $id_cita = (int)$_GET['id_cita'];
-    
-    // Verificar que la cita pertenece al paciente (si es paciente)
-    if ($es_paciente) {
-        $resultado_cancelacion = cancelarCitaPaciente($id_cita, $id_paciente, $conexion);
-    } else {
-        // Si es admin, puede cancelar cualquier cita? Mejor no permitir
-        $_SESSION['error'] = "Los administradores no pueden cancelar citas desde esta vista.";
-        redirigir('/ecodent/public/paciente/mis_citas.php');
-    }
-    
-    if ($resultado_cancelacion['exito']) {
-        $_SESSION['exito'] = $resultado_cancelacion['mensaje'];
-    } else {
-        $_SESSION['error'] = $resultado_cancelacion['error'];
-    }
-    
-    redirigir('/ecodent/public/paciente/mis_citas.php');
+function puedeModificarCancelar($fecha_cita, $hora_cita) {
+    $fecha_hora_cita = strtotime($fecha_cita . ' ' . $hora_cita);
+    $ahora = time();
+    $diferencia_horas = ($fecha_hora_cita - $ahora) / 3600;
+    return $diferencia_horas >= 24;
 }
 
 // =============================================
-// FUNCIONES AUXILIARES
+// FUNCIONES AUXILIARES PARA REPROGRAMACIÓN
 // =============================================
 
 /**
@@ -283,6 +268,7 @@ if (isset($_SESSION['error'])) {
                             $es_cancelada_por_doctor = ($cita['estado'] == 'cancelada_doc');
                             $tiene_opciones_disponibles = $es_cancelada_por_doctor ? tieneOpcionesDisponibles($cita['id_cita'], $conexion) : false;
                             $ya_eligio_opcion = $es_cancelada_por_doctor ? yaEligioOpcion($cita['id_cita'], $conexion) : false;
+                            $puede = puedeModificarCancelar($cita['fecha_cita'], $cita['hora_cita']);
                             ?>
                             <tr>
                                 <td><?php echo date('d/m/Y', strtotime($cita['fecha_cita'])); ?></td>
@@ -353,12 +339,12 @@ if (isset($_SESSION['error'])) {
                                             <i class="bi bi-exclamation-triangle"></i> Sin opciones
                                         </span>
                                     <?php endif; ?>
-                                </td>
+                                 </th>
                                 
                                 <?php if ($es_paciente): ?>
                                     <td>
-                                        <?php if ($cita['estado'] == 'programada' || $cita['estado'] == 'confirmada'): ?>
-                                            <a href="mis_citas.php?cancelar=1&id_cita=<?php echo $cita['id_cita']; ?>" 
+                                        <?php if (($cita['estado'] == 'programada' || $cita['estado'] == 'confirmada') && $puede): ?>
+                                            <a href="cancelar_cita.php?id_cita=<?php echo $cita['id_cita']; ?>" 
                                                class="btn btn-danger btn-sm"
                                                onclick="return confirm('¿Estás seguro de cancelar esta cita?\n\nRecuerda: Al cancelar, el horario quedará disponible para otros pacientes.')">
                                                 <i class="bi bi-x-circle"></i> Cancelar
@@ -370,6 +356,12 @@ if (isset($_SESSION['error'])) {
                                                     <i class="bi bi-pencil"></i> Modificar
                                                 </a>
                                             <?php endif; ?>
+                                            
+                                        <?php elseif (($cita['estado'] == 'programada' || $cita['estado'] == 'confirmada') && !$puede): ?>
+                                            <span class="badge bg-secondary">
+                                                <i class="bi bi-clock-history"></i> No disponible<br>
+                                                <small>Faltan menos de 24h</small>
+                                            </span>
                                         <?php endif; ?>
                                     </td>
                                 <?php endif; ?>

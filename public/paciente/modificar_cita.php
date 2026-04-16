@@ -43,6 +43,22 @@ if (!$cita) {
     redirigir('/ecodent/public/paciente/mis_citas.php');
 }
 
+// =============================================
+// VALIDAR QUE FALTEN MÁS DE 24 HORAS PARA MODIFICAR
+// =============================================
+function puedeModificar($fecha_cita, $hora_cita) {
+    $fecha_hora_cita = strtotime($fecha_cita . ' ' . $hora_cita);
+    $ahora = time();
+    $diferencia_horas = ($fecha_hora_cita - $ahora) / 3600;
+    return $diferencia_horas >= 24;
+}
+
+if (!puedeModificar($cita['fecha_cita'], $cita['hora_cita'])) {
+    $faltan = round((strtotime($cita['fecha_cita'] . ' ' . $cita['hora_cita']) - time()) / 3600, 1);
+    $_SESSION['error'] = "⏰ No puedes modificar la cita. Faltan solo {$faltan} horas para la cita. Debes modificar con al menos 24 horas de anticipación.";
+    redirigir('/ecodent/public/paciente/mis_citas.php');
+}
+
 // VERIFICAR SI PUEDE MODIFICAR (controlado por trigger)
 if (!$cita['puede_modificar']) {
     $_SESSION['error'] = "⚠️ Has alcanzado el límite de {$cita['limite_cambios']} modificaciones. No puedes modificar esta cita.";
