@@ -37,9 +37,10 @@ $sql = "SELECT c.*,
                o.especialidad_principal,
                o.id_odontologo
         FROM citas c
-        JOIN odontologos o ON c.id_odontologo = o.id_odontologo
+        JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+        JOIN odontologos o ON t.id_odontologo = o.id_odontologo
         JOIN usuarios u ON o.id_usuario = u.id_usuario
-        WHERE c.id_cita = ? AND c.id_paciente = ? AND c.estado = 'cancelada_doc'";
+        WHERE c.id_cita = ? AND t.id_paciente = ? AND c.estado = 'cancelada_doc'";
 
 $stmt = $conexion->prepare($sql);
 $stmt->bind_param("ii", $id_cita, $id_paciente);
@@ -87,18 +88,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['seleccionar'])) {
 
             // Verificar que el slot sigue disponible (no está ocupado por otra cita)
             $stmt_check = $conexion->prepare("
-                SELECT COUNT(*) as total FROM citas 
-                WHERE id_odontologo = ? 
-                  AND fecha_cita = ? 
-                  AND hora_cita = ? 
-                  AND estado IN ('programada', 'confirmada')
-            ");
-            $stmt_check->bind_param(
-                "iss",
-                $cita_original['id_odontologo'],
-                $opcion_elegida['fecha_propuesta'],
-                $opcion_elegida['hora_propuesta']
-            );
+    SELECT COUNT(*) as total FROM citas c
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    WHERE t.id_odontologo = ? 
+      AND c.fecha_cita = ? 
+      AND c.hora_cita = ? 
+      AND c.estado IN ('programada', 'confirmada')
+");
+$stmt_check->bind_param("iss", $cita_original['id_odontologo'], $opcion_elegida['fecha_propuesta'], $opcion_elegida['hora_propuesta']);
             $stmt_check->execute();
             $check = $stmt_check->get_result()->fetch_assoc();
 
@@ -111,20 +108,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['seleccionar'])) {
 
                 try {
                     // 1. Crear la nueva cita con hora_fin incluida
-                    $stmt_nueva = $conexion->prepare("
-                        INSERT INTO citas 
-                            (id_paciente, id_odontologo, fecha_cita, hora_cita, hora_fin, motivo, estado)
-                        VALUES (?, ?, ?, ?, ?, ?, 'programada')
-                    ");
-                    $stmt_nueva->bind_param(
-                        "iissss",
-                        $id_paciente,
-                        $cita_original['id_odontologo'],
-                        $opcion_elegida['fecha_propuesta'],
-                        $opcion_elegida['hora_propuesta'],
-                        $opcion_elegida['hora_propuesta_fin'],
-                        $cita_original['motivo']
-                    );
+                   $stmt_nueva = $conexion->prepare("
+    INSERT INTO citas 
+        (id_tratamiento, fecha_cita, hora_cita, hora_fin, motivo, estado)
+    VALUES (?, ?, ?, ?, ?, 'programada')
+");
+$stmt_nueva->bind_param("issss", $cita_original['id_tratamiento'], $opcion_elegida['fecha_propuesta'], $opcion_elegida['hora_propuesta'], $opcion_elegida['hora_propuesta_fin'], $cita_original['motivo']);
                     if (!$stmt_nueva->execute()) {
                         throw new Exception("Error al crear la nueva cita");
                     }

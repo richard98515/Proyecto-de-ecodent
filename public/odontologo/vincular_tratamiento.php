@@ -30,9 +30,10 @@ if (isset($_SESSION['nuevo_tratamiento_id'])) {
 $stmt_cita = $conexion->prepare("
     SELECT c.*, u.nombre_completo as paciente_nombre
     FROM citas c
-    JOIN pacientes p ON c.id_paciente = p.id_paciente
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    JOIN pacientes p ON t.id_paciente = p.id_paciente
     JOIN usuarios u ON p.id_usuario = u.id_usuario
-    WHERE c.id_cita = ? AND c.id_odontologo = ?
+    WHERE c.id_cita = ? AND t.id_odontologo = ?
 ");
 $stmt_cita->bind_param("ii", $id_cita, $id_odontologo);
 $stmt_cita->execute();

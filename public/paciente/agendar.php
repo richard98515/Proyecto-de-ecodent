@@ -43,10 +43,11 @@ if (!$paciente['puede_agendar'] || $paciente['estado_cuenta'] == 'bloqueada') {
 // 2. Verificar límite de citas simultáneas
 $stmt_citas = $conexion->prepare("
     SELECT COUNT(*) as total 
-    FROM citas 
-    WHERE id_paciente = ? 
-    AND fecha_cita >= CURDATE() 
-    AND estado IN ('programada', 'confirmada')
+    FROM citas c
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    WHERE t.id_paciente = ? 
+    AND c.fecha_cita >= CURDATE() 
+    AND c.estado IN ('programada', 'confirmada')
 ");
 $stmt_citas->bind_param("i", $id_paciente);
 $stmt_citas->execute();
@@ -85,7 +86,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['agendar'])) {
             // Verificar límite de citas del paciente (otra vez por si cambió)
             $stmt_limite = $conexion->prepare("
                 SELECT limite_citas_simultaneas, 
-                       (SELECT COUNT(*) FROM citas WHERE id_paciente = ? AND estado IN ('programada', 'confirmada') AND fecha_cita >= CURDATE()) as citas_actuales
+                       (SELECT COUNT(*) FROM citas c2
+                        JOIN tratamientos t2 ON c2.id_tratamiento = t2.id_tratamiento
+                        WHERE t2.id_paciente = ? AND c2.estado IN ('programada', 'confirmada') AND c2.fecha_cita >= CURDATE()) as citas_actuales
                 FROM pacientes 
                 WHERE id_paciente = ?
             ");
@@ -101,12 +104,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['agendar'])) {
                 $conexion->begin_transaction();
                 
                 try {
-                    // Insertar la cita
-                    $stmt_cita = $conexion->prepare("
-                        INSERT INTO citas (id_paciente, id_odontologo, fecha_cita, hora_cita, hora_fin, motivo, estado)
-                        VALUES (?, ?, ?, ?, ?, ?, 'programada')
+                    // PASO 1: Crear un tratamiento genérico para esta cita
+                    $nombre_tratamiento = "Consulta - " . date('d/m/Y H:i');
+                    $stmt_crear_trat = $conexion->prepare("
+                        INSERT INTO tratamientos (id_paciente, id_odontologo, nombre_tratamiento, costo_total, estado)
+                        VALUES (?, ?, ?, 0, 'pendiente')
                     ");
-                    $stmt_cita->bind_param("iissss", $id_paciente, $odontologo_id, $fecha, $hora, $hora_fin, $motivo);
+                    $stmt_crear_trat->bind_param("iis", $id_paciente, $odontologo_id, $nombre_tratamiento);
+                    $stmt_crear_trat->execute();
+                    $id_tratamiento_nuevo = $conexion->insert_id;
+                    
+                    // PASO 2: Insertar la cita con el tratamiento recién creado
+                    $stmt_cita = $conexion->prepare("
+                        INSERT INTO citas (id_tratamiento, fecha_cita, hora_cita, hora_fin, motivo, estado)
+                        VALUES (?, ?, ?, ?, ?, 'programada')
+                    ");
+                    $stmt_cita->bind_param("issss", $id_tratamiento_nuevo, $fecha, $hora, $hora_fin, $motivo);
                     
                     if (!$stmt_cita->execute()) {
                         throw new Exception("Error al agendar cita");

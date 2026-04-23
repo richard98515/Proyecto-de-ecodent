@@ -23,10 +23,16 @@ if (isset($_GET['eliminar']) && is_numeric($_GET['eliminar']) && $es_admin) {
     $id_odontologo = $_GET['eliminar'];
     
     // Verificar que no tenga citas
-    $stmt_verificar = $conexion->prepare("SELECT COUNT(*) as total FROM citas WHERE id_odontologo = ?");
-    $stmt_verificar->bind_param("i", $id_odontologo);
-    $stmt_verificar->execute();
-    $total_citas = $stmt_verificar->get_result()->fetch_assoc()['total'];
+    // Verificar que no tenga citas (CORREGIDO: usando tratamientos)
+        $stmt_verificar = $conexion->prepare("
+            SELECT COUNT(*) as total 
+            FROM citas c
+            JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+            WHERE t.id_odontologo = ?
+        ");
+        $stmt_verificar->bind_param("i", $id_odontologo);
+        $stmt_verificar->execute();
+        $total_citas = $stmt_verificar->get_result()->fetch_assoc()['total'];
     
     if ($total_citas > 0) {
         $_SESSION['error'] = "No se puede eliminar el odontólogo porque tiene $total_citas cita(s) registrada(s).";

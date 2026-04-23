@@ -67,34 +67,40 @@ if (!$paciente) {
 }
 
 // Obtener estadísticas completas - Si es admin, mostrar todas las citas del paciente (sin filtrar por odontólogo)
+// Obtener estadísticas completas - Si es admin, mostrar todas las citas del paciente (sin filtrar por odontólogo)
 if ($es_odontologo && $id_odontologo) {
     $stmt_stats = $conexion->prepare("
-        SELECT 
-            COUNT(*) as total_citas,
-            SUM(CASE WHEN estado = 'programada' THEN 1 ELSE 0 END) as programadas,
-            SUM(CASE WHEN estado = 'confirmada' THEN 1 ELSE 0 END) as confirmadas,
-            SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as completadas,
-            SUM(CASE WHEN estado = 'cancelada_pac' THEN 1 ELSE 0 END) as canceladas_paciente,
-            SUM(CASE WHEN estado = 'cancelada_doc' THEN 1 ELSE 0 END) as canceladas_doctor,
-            SUM(CASE WHEN estado = 'ausente' THEN 1 ELSE 0 END) as ausencias,
-            MAX(fecha_cita) as ultima_cita,
-            MIN(fecha_cita) as primera_cita
-        FROM citas 
-        WHERE id_paciente = ? AND id_odontologo = ?
-    ");
+    SELECT 
+        COUNT(*) as total_citas,
+        SUM(CASE WHEN c.estado = 'programada' THEN 1 ELSE 0 END) as programadas,
+        SUM(CASE WHEN c.estado = 'confirmada' THEN 1 ELSE 0 END) as confirmadas,
+        SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as completadas,
+        SUM(CASE WHEN c.estado = 'cancelada_pac' THEN 1 ELSE 0 END) as canceladas_paciente,
+        SUM(CASE WHEN c.estado = 'cancelada_doc' THEN 1 ELSE 0 END) as canceladas_doctor,
+        SUM(CASE WHEN c.estado = 'ausente' THEN 1 ELSE 0 END) as ausencias,
+        MAX(c.fecha_cita) as ultima_cita,
+        MIN(c.fecha_cita) as primera_cita
+    FROM citas c
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    WHERE t.id_paciente = ? AND t.id_odontologo = ?
+");
+    $stmt_stats->bind_param("ii", $id_paciente, $id_odontologo);
+    $stmt_stats->execute();
+    $estadisticas = $stmt_stats->get_result()->fetch_assoc();
     $stmt_stats->bind_param("ii", $id_paciente, $id_odontologo);
     $stmt_stats->execute();
     $estadisticas = $stmt_stats->get_result()->fetch_assoc();
     
     // Obtener todas las citas del paciente con este odontólogo
     $stmt_citas = $conexion->prepare("
-        SELECT c.id_cita, c.fecha_cita, c.hora_cita, c.hora_fin, c.motivo, c.estado,
-               c.llego_tarde, c.minutos_tarde, c.fecha_creacion, c.fecha_actualizacion,
-               c.motivo_cancelacion, c.fecha_cancelacion
-        FROM citas c
-        WHERE c.id_paciente = ? AND c.id_odontologo = ?
-        ORDER BY c.fecha_cita DESC, c.hora_cita DESC
-    ");
+    SELECT c.id_cita, c.fecha_cita, c.hora_cita, c.hora_fin, c.motivo, c.estado,
+           c.llego_tarde, c.minutos_tarde, c.fecha_creacion, c.fecha_actualizacion,
+           c.motivo_cancelacion, c.fecha_cancelacion
+    FROM citas c
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    WHERE t.id_paciente = ? AND t.id_odontologo = ?
+    ORDER BY c.fecha_cita DESC, c.hora_cita DESC
+");
     $stmt_citas->bind_param("ii", $id_paciente, $id_odontologo);
     $stmt_citas->execute();
     $citas = $stmt_citas->get_result();
@@ -114,35 +120,37 @@ if ($es_odontologo && $id_odontologo) {
 } else {
     // Si es admin, mostrar todas las citas sin filtrar por odontólogo
     $stmt_stats = $conexion->prepare("
-        SELECT 
-            COUNT(*) as total_citas,
-            SUM(CASE WHEN estado = 'programada' THEN 1 ELSE 0 END) as programadas,
-            SUM(CASE WHEN estado = 'confirmada' THEN 1 ELSE 0 END) as confirmadas,
-            SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as completadas,
-            SUM(CASE WHEN estado = 'cancelada_pac' THEN 1 ELSE 0 END) as canceladas_paciente,
-            SUM(CASE WHEN estado = 'cancelada_doc' THEN 1 ELSE 0 END) as canceladas_doctor,
-            SUM(CASE WHEN estado = 'ausente' THEN 1 ELSE 0 END) as ausencias,
-            MAX(fecha_cita) as ultima_cita,
-            MIN(fecha_cita) as primera_cita
-        FROM citas 
-        WHERE id_paciente = ?
-    ");
+    SELECT 
+        COUNT(*) as total_citas,
+        SUM(CASE WHEN c.estado = 'programada' THEN 1 ELSE 0 END) as programadas,
+        SUM(CASE WHEN c.estado = 'confirmada' THEN 1 ELSE 0 END) as confirmadas,
+        SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as completadas,
+        SUM(CASE WHEN c.estado = 'cancelada_pac' THEN 1 ELSE 0 END) as canceladas_paciente,
+        SUM(CASE WHEN c.estado = 'cancelada_doc' THEN 1 ELSE 0 END) as canceladas_doctor,
+        SUM(CASE WHEN c.estado = 'ausente' THEN 1 ELSE 0 END) as ausencias,
+        MAX(c.fecha_cita) as ultima_cita,
+        MIN(c.fecha_cita) as primera_cita
+    FROM citas c
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    WHERE t.id_paciente = ?
+");
     $stmt_stats->bind_param("i", $id_paciente);
     $stmt_stats->execute();
     $estadisticas = $stmt_stats->get_result()->fetch_assoc();
     
     // Obtener todas las citas del paciente (todos los odontólogos)
     $stmt_citas = $conexion->prepare("
-        SELECT c.id_cita, c.fecha_cita, c.hora_cita, c.hora_fin, c.motivo, c.estado,
-               c.llego_tarde, c.minutos_tarde, c.fecha_creacion, c.fecha_actualizacion,
-               c.motivo_cancelacion, c.fecha_cancelacion,
-               u.nombre_completo as odontologo_nombre
-        FROM citas c
-        JOIN odontologos o ON c.id_odontologo = o.id_odontologo
-        JOIN usuarios u ON o.id_usuario = u.id_usuario
-        WHERE c.id_paciente = ?
-        ORDER BY c.fecha_cita DESC, c.hora_cita DESC
-    ");
+    SELECT c.id_cita, c.fecha_cita, c.hora_cita, c.hora_fin, c.motivo, c.estado,
+           c.llego_tarde, c.minutos_tarde, c.fecha_creacion, c.fecha_actualizacion,
+           c.motivo_cancelacion, c.fecha_cancelacion,
+           u.nombre_completo as odontologo_nombre
+    FROM citas c
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    JOIN odontologos o ON t.id_odontologo = o.id_odontologo
+    JOIN usuarios u ON o.id_usuario = u.id_usuario
+    WHERE t.id_paciente = ?
+    ORDER BY c.fecha_cita DESC, c.hora_cita DESC
+");
     $stmt_citas->bind_param("i", $id_paciente);
     $stmt_citas->execute();
     $citas = $stmt_citas->get_result();
@@ -618,6 +626,9 @@ require_once '../../includes/header.php';
                                         <i class="bi bi-eye"></i> Ver
                                     </a>
                                     <?php if ($es_odontologo): ?>
+                                        <a href="tratamiento_editar.php?id=<?php echo $tratamiento['id_tratamiento']; ?>" class="btn btn-sm btn-outline-warning mt-1">
+                                            <i class="bi bi-pencil"></i> Editar
+                                        </a>
                                         <a href="pago_nuevo.php?tratamiento=<?php echo $tratamiento['id_tratamiento']; ?>&paciente=<?php echo $id_paciente; ?>" class="btn btn-sm btn-outline-success mt-1">
                                             <i class="bi bi-cash"></i> Registrar pago
                                         </a>

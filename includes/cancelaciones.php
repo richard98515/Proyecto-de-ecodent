@@ -9,11 +9,12 @@
 function cancelarCitaPaciente($id_cita, $id_paciente, $conexion) {
     
     $sql = "SELECT c.*, p.id_usuario, u.email, u.telefono, u.nombre_completo
-            FROM citas c
-            JOIN pacientes p ON c.id_paciente = p.id_paciente
-            JOIN usuarios u ON p.id_usuario = u.id_usuario
-            WHERE c.id_cita = ? AND p.id_paciente = ? 
-            AND c.estado IN ('programada', 'confirmada')";
+        FROM citas c
+        JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+        JOIN pacientes p ON t.id_paciente = p.id_paciente
+        JOIN usuarios u ON p.id_usuario = u.id_usuario
+        WHERE c.id_cita = ? AND p.id_paciente = ? 
+        AND c.estado IN ('programada', 'confirmada')";
     
     $stmt = $conexion->prepare($sql);
     $stmt->bind_param("ii", $id_cita, $id_paciente);
@@ -73,18 +74,19 @@ function cancelarCitaOdontologo($id_cita, $id_odontologo, $motivo, $opciones_rep
     try {
         // PASO 1: Obtener datos de la cita + paciente
         $sql = "SELECT c.*, 
-                       p.id_usuario as id_usuario_paciente,
-                       u.email as email_paciente,
-                       u.telefono as telefono_paciente,
-                       u.nombre_completo as nombre_paciente,
-                       u2.nombre_completo as nombre_odontologo
-                FROM citas c
-                JOIN pacientes p ON c.id_paciente = p.id_paciente
-                JOIN usuarios u ON p.id_usuario = u.id_usuario
-                JOIN odontologos o ON c.id_odontologo = o.id_odontologo
-                JOIN usuarios u2 ON o.id_usuario = u2.id_usuario
-                WHERE c.id_cita = ? AND c.id_odontologo = ? 
-                AND c.estado IN ('programada', 'confirmada')";
+               p.id_usuario as id_usuario_paciente,
+               u.email as email_paciente,
+               u.telefono as telefono_paciente,
+               u.nombre_completo as nombre_paciente,
+               u2.nombre_completo as nombre_odontologo
+        FROM citas c
+        JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+        JOIN pacientes p ON t.id_paciente = p.id_paciente
+        JOIN usuarios u ON p.id_usuario = u.id_usuario
+        JOIN odontologos o ON t.id_odontologo = o.id_odontologo
+        JOIN usuarios u2 ON o.id_usuario = u2.id_usuario
+        WHERE c.id_cita = ? AND t.id_odontologo = ? 
+        AND c.estado IN ('programada', 'confirmada')";
         
         $stmt = $conexion->prepare($sql);
         $stmt->bind_param("ii", $id_cita, $id_odontologo);
@@ -249,8 +251,8 @@ function aceptarReprogramacion($id_opcion, $id_paciente, $conexion) {
         $stmt2->execute();
         
         $sql3 = "INSERT INTO citas 
-                 (id_paciente, id_odontologo, fecha_cita, hora_cita, hora_fin, motivo, estado) 
-                 VALUES (?, ?, ?, ?, ?, ?, 'programada')";
+         (id_tratamiento, fecha_cita, hora_cita, hora_fin, motivo, estado) 
+         VALUES (?, ?, ?, ?, ?, 'programada')";
         
         $stmt3 = $conexion->prepare($sql3);
         $stmt3->bind_param("iissss", 

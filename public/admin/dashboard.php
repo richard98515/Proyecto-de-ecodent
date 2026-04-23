@@ -28,7 +28,12 @@ $result = $conexion->query("SELECT COUNT(*) as total FROM odontologos WHERE acti
 $total_odontologos = $result ? $result->fetch_assoc()['total'] : 0;
 
 // Total de citas hoy
-$stmt = $conexion->prepare("SELECT COUNT(*) as total FROM citas WHERE fecha_cita = ? AND estado IN ('programada', 'confirmada')");
+$stmt = $conexion->prepare("
+    SELECT COUNT(*) as total 
+    FROM citas c
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    WHERE c.fecha_cita = ? AND c.estado IN ('programada', 'confirmada')
+");
 $stmt->bind_param("s", $hoy);
 $stmt->execute();
 $result = $stmt->get_result();
@@ -90,9 +95,10 @@ $proximas_citas = $conexion->query("
            u.nombre_completo as paciente,
            od.nombre_completo as odontologo
     FROM citas c
-    JOIN pacientes p ON c.id_paciente = p.id_paciente
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    JOIN pacientes p ON t.id_paciente = p.id_paciente
     JOIN usuarios u ON p.id_usuario = u.id_usuario
-    JOIN odontologos o ON c.id_odontologo = o.id_odontologo
+    JOIN odontologos o ON t.id_odontologo = o.id_odontologo
     JOIN usuarios od ON o.id_usuario = od.id_usuario
     WHERE c.fecha_cita >= CURDATE()
     AND c.estado IN ('programada', 'confirmada')

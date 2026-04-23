@@ -150,9 +150,10 @@ $pacientes = $conexion->query($sql_pacientes);
 $sql_ocupados = "SELECT c.id_cita, c.hora_cita, c.hora_fin, c.motivo, c.estado,
                         u.nombre_completo as paciente
                  FROM citas c
-                 JOIN pacientes p ON c.id_paciente = p.id_paciente
+                 JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+                 JOIN pacientes p ON t.id_paciente = p.id_paciente
                  JOIN usuarios u ON p.id_usuario = u.id_usuario
-                 WHERE c.id_odontologo = ?
+                 WHERE t.id_odontologo = ?
                    AND c.fecha_cita = ?
                    AND c.estado IN ('programada','confirmada','completada','ausente')
                  ORDER BY c.hora_cita ASC";

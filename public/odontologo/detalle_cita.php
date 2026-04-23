@@ -61,47 +61,52 @@ $id_cita = (int)$_GET['id_cita'];
 if ($es_odontologo && $id_odontologo) {
     // Odontólogo ve solo sus citas
     $sql = "SELECT c.*, 
-                   p.id_paciente,
-                   u.nombre_completo as nombre_paciente,
-                   u.email,
-                   u.telefono,
-                   u.fecha_registro as paciente_desde,
-                   t.id_tratamiento,
-                   t.nombre_tratamiento,
-                   t.estado as tratamiento_estado,
-                   (SELECT COUNT(*) FROM citas WHERE id_paciente = c.id_paciente AND id_odontologo = ?) as total_citas_paciente
-            FROM citas c
-            JOIN pacientes p ON c.id_paciente = p.id_paciente
-            JOIN usuarios u ON p.id_usuario = u.id_usuario
-            LEFT JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
-            WHERE c.id_cita = ? AND c.id_odontologo = ?";
+               t.id_paciente,
+               t.id_odontologo, 
+               u.nombre_completo as nombre_paciente,
+               u.email,
+               u.telefono,
+               u.fecha_registro as paciente_desde,
+               t.id_tratamiento,
+               t.nombre_tratamiento,
+               t.estado as tratamiento_estado,
+               t.costo_total,
+               t.descripcion,
+               (SELECT COUNT(*) FROM citas WHERE id_tratamiento IN (SELECT id_tratamiento FROM tratamientos WHERE id_paciente = t.id_paciente)) as total_citas_paciente
+        FROM citas c
+        JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+        JOIN pacientes p ON t.id_paciente = p.id_paciente
+        JOIN usuarios u ON p.id_usuario = u.id_usuario
+        WHERE c.id_cita = ? AND t.id_odontologo = ?";
     
     $stmt = $conexion->prepare($sql);
-    $stmt->bind_param("iii", $id_odontologo, $id_cita, $id_odontologo);
+    $stmt->bind_param("ii", $id_cita, $id_odontologo);
     $stmt->execute();
     $resultado = $stmt->get_result();
     $cita = $resultado->fetch_assoc();
 } else {
     // Admin puede ver cualquier cita
-    $sql = "SELECT c.*, 
-                   p.id_paciente,
-                   u.nombre_completo as nombre_paciente,
-                   u.email,
-                   u.telefono,
-                   u.fecha_registro as paciente_desde,
-                   o.id_odontologo,
-                   od.nombre_completo as nombre_odontologo,
-                   t.id_tratamiento,
-                   t.nombre_tratamiento,
-                   t.estado as tratamiento_estado,
-                   (SELECT COUNT(*) FROM citas WHERE id_paciente = c.id_paciente) as total_citas_paciente
-            FROM citas c
-            JOIN pacientes p ON c.id_paciente = p.id_paciente
-            JOIN usuarios u ON p.id_usuario = u.id_usuario
-            JOIN odontologos o ON c.id_odontologo = o.id_odontologo
-            JOIN usuarios od ON o.id_usuario = od.id_usuario
-            LEFT JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
-            WHERE c.id_cita = ?";
+   $sql = "SELECT c.*, 
+               t.id_paciente,
+               u.nombre_completo as nombre_paciente,
+               u.email,
+               u.telefono,
+               u.fecha_registro as paciente_desde,
+               t.id_odontologo,
+               od.nombre_completo as nombre_odontologo,
+               t.id_tratamiento,
+               t.nombre_tratamiento,
+               t.estado as tratamiento_estado,
+               t.costo_total,
+               t.descripcion,
+               (SELECT COUNT(*) FROM citas WHERE id_tratamiento IN (SELECT id_tratamiento FROM tratamientos WHERE id_paciente = t.id_paciente)) as total_citas_paciente
+        FROM citas c
+        JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+        JOIN pacientes p ON t.id_paciente = p.id_paciente
+        JOIN usuarios u ON p.id_usuario = u.id_usuario
+        JOIN odontologos o ON t.id_odontologo = o.id_odontologo
+        JOIN usuarios od ON o.id_usuario = od.id_usuario
+        WHERE c.id_cita = ?";
     
     $stmt = $conexion->prepare($sql);
     $stmt->bind_param("i", $id_cita);
@@ -294,7 +299,7 @@ if (isset($_SESSION['error'])) {
                                 - 
                                 <strong><?php echo date('h:i A', strtotime($cita['hora_fin'])); ?></strong>
                                 <span class="badge bg-secondary ms-2">40 min</span>
-                             </td>
+                              </td>
                         </tr>
                         <?php if ($es_admin && isset($cita['nombre_odontologo'])): ?>
                         <tr>
@@ -317,7 +322,7 @@ if (isset($_SESSION['error'])) {
                                 $estado_info = $estados[$cita['estado']] ?? ['badge bg-secondary', $cita['estado']];
                                 ?>
                                 <span class="<?php echo $estado_info[0]; ?>"><?php echo $estado_info[1]; ?></span>
-                             </td>
+                              </td>
                         </tr>
                         <tr>
                             <th>Motivo:</th>
@@ -340,10 +345,28 @@ if (isset($_SESSION['error'])) {
                                             else echo $estado_trat;
                                         ?>
                                     </span>
-                                    <a href="tratamiento_detalle.php?id=<?php echo $cita['id_tratamiento']; ?>" 
-                                       class="btn btn-sm btn-outline-info ms-2">
-                                        <i class="bi bi-eye"></i> Ver tratamiento
-                                    </a>
+                                    
+                                    <?php 
+                                    // Detectar si es un tratamiento genérico (nombre empieza con "Consulta -" y costo_total = 0)
+                                    $es_tratamiento_generico = (strpos($cita['nombre_tratamiento'], 'Consulta -') === 0 && ($cita['costo_total'] == 0 || $cita['costo_total'] === null));
+                                    ?>
+                                    
+                                    <?php if ($es_tratamiento_generico && in_array($cita['estado'], ['programada', 'confirmada'])): ?>
+                                        <!-- Tratamiento genérico - necesita ser editado -->
+                                        <a href="tratamiento_editar.php?id=<?php echo $cita['id_tratamiento']; ?>&from=cita&id_cita=<?php echo $id_cita; ?>" 
+                                           class="btn btn-sm btn-warning ms-2">
+                                            <i class="bi bi-pencil-square"></i> Completar tratamiento
+                                        </a>
+                                        <small class="text-muted d-block mt-1">
+                                            <i class="bi bi-info-circle"></i> Este es un tratamiento temporal. Complétalo con el nombre y costo real.
+                                        </small>
+                                    <?php else: ?>
+                                        <!-- Tratamiento real - solo ver detalles -->
+                                        <a href="tratamiento_detalle.php?id=<?php echo $cita['id_tratamiento']; ?>" 
+                                           class="btn btn-sm btn-outline-info ms-2">
+                                            <i class="bi bi-eye"></i> Ver tratamiento
+                                        </a>
+                                    <?php endif; ?>
                                 <?php else: ?>
                                     <span class="text-muted">
                                         <i class="bi bi-question-circle"></i> No vinculado a tratamiento

@@ -110,13 +110,14 @@ function yaEligioOpcion($id_cita, $conexion) {
 if ($es_paciente && $id_paciente) {
     // Paciente ve sus propias citas
     $sql = "SELECT c.*, 
-                   u.nombre_completo as nombre_odontologo,
-                   o.especialidad_principal
-            FROM citas c
-            JOIN odontologos o ON c.id_odontologo = o.id_odontologo
-            JOIN usuarios u ON o.id_usuario = u.id_usuario
-            WHERE c.id_paciente = ?
-            ORDER BY c.fecha_cita DESC, c.hora_cita DESC";
+               u.nombre_completo as nombre_odontologo,
+               o.especialidad_principal
+        FROM citas c
+        JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+        JOIN odontologos o ON t.id_odontologo = o.id_odontologo
+        JOIN usuarios u ON o.id_usuario = u.id_usuario
+        WHERE t.id_paciente = ?
+        ORDER BY c.fecha_cita DESC, c.hora_cita DESC";
     
     $stmt = $conexion->prepare($sql);
     $stmt->bind_param("i", $id_paciente);
@@ -126,13 +127,14 @@ if ($es_paciente && $id_paciente) {
 } elseif ($es_admin && $id_paciente) {
     // Admin viendo citas de un paciente específico
     $sql = "SELECT c.*, 
-                   u.nombre_completo as nombre_odontologo,
-                   o.especialidad_principal
-            FROM citas c
-            JOIN odontologos o ON c.id_odontologo = o.id_odontologo
-            JOIN usuarios u ON o.id_usuario = u.id_usuario
-            WHERE c.id_paciente = ?
-            ORDER BY c.fecha_cita DESC, c.hora_cita DESC";
+               u.nombre_completo as nombre_odontologo,
+               o.especialidad_principal
+        FROM citas c
+        JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+        JOIN odontologos o ON t.id_odontologo = o.id_odontologo
+        JOIN usuarios u ON o.id_usuario = u.id_usuario
+        WHERE t.id_paciente = ?
+        ORDER BY c.fecha_cita DESC, c.hora_cita DESC";
     
     $stmt = $conexion->prepare($sql);
     $stmt->bind_param("i", $id_paciente);
@@ -142,16 +144,17 @@ if ($es_paciente && $id_paciente) {
 } elseif ($es_admin) {
     // Admin viendo TODAS las citas (para supervisión)
     $sql = "SELECT c.*, 
-                   u.nombre_completo as nombre_odontologo,
-                   o.especialidad_principal,
-                   p2.nombre_completo as nombre_paciente
-            FROM citas c
-            JOIN odontologos o ON c.id_odontologo = o.id_odontologo
-            JOIN usuarios u ON o.id_usuario = u.id_usuario
-            JOIN pacientes p ON c.id_paciente = p.id_paciente
-            JOIN usuarios p2 ON p.id_usuario = p2.id_usuario
-            ORDER BY c.fecha_cita DESC, c.hora_cita DESC
-            LIMIT 100";
+               u.nombre_completo as nombre_odontologo,
+               o.especialidad_principal,
+               p2.nombre_completo as nombre_paciente
+        FROM citas c
+        JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+        JOIN odontologos o ON t.id_odontologo = o.id_odontologo
+        JOIN usuarios u ON o.id_usuario = u.id_usuario
+        JOIN pacientes p ON t.id_paciente = p.id_paciente
+        JOIN usuarios p2 ON p.id_usuario = p2.id_usuario
+        ORDER BY c.fecha_cita DESC, c.hora_cita DESC
+        LIMIT 100";
     
     $citas = $conexion->query($sql);
     

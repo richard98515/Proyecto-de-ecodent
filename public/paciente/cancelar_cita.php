@@ -28,7 +28,8 @@ $id_cita = (int)$_GET['id_cita'];
 $stmt = $conexion->prepare("
     SELECT c.*, c.fecha_cita, c.hora_cita, c.estado
     FROM citas c
-    WHERE c.id_cita = ? AND c.id_paciente = ?
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    WHERE c.id_cita = ? AND t.id_paciente = ?
 ");
 $stmt->bind_param("ii", $id_cita, $id_paciente);
 $stmt->execute();
@@ -64,9 +65,9 @@ $stmt = $conexion->prepare("
     SET estado = 'cancelada_pac', 
         fecha_cancelacion = NOW(),
         motivo_cancelacion = 'Cancelada por el paciente'
-    WHERE id_cita = ? AND id_paciente = ?
+    WHERE id_cita = ?
 ");
-$stmt->bind_param("ii", $id_cita, $id_paciente);
+$stmt->bind_param("i", $id_cita);
 
 if ($stmt->execute()) {
     $_SESSION['exito'] = "✅ Cita cancelada exitosamente. El horario quedará disponible para otros pacientes.";

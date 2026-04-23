@@ -121,13 +121,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $stmt_citas = $conexion->prepare("
     SELECT 
         COUNT(*) as total_citas,
-        SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as completadas,
-        SUM(CASE WHEN estado = 'cancelada_pac' THEN 1 ELSE 0 END) as canceladas_paciente,
-        SUM(CASE WHEN estado = 'cancelada_doc' THEN 1 ELSE 0 END) as canceladas_doctor,
-        SUM(CASE WHEN estado = 'ausente' THEN 1 ELSE 0 END) as ausencias,
-        MAX(fecha_cita) as ultima_cita
-    FROM citas 
-    WHERE id_paciente = ? AND id_odontologo = ?
+        SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as completadas,
+        SUM(CASE WHEN c.estado = 'cancelada_pac' THEN 1 ELSE 0 END) as canceladas_paciente,
+        SUM(CASE WHEN c.estado = 'cancelada_doc' THEN 1 ELSE 0 END) as canceladas_doctor,
+        SUM(CASE WHEN c.estado = 'ausente' THEN 1 ELSE 0 END) as ausencias,
+        MAX(c.fecha_cita) as ultima_cita
+    FROM citas c
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    WHERE t.id_paciente = ? AND t.id_odontologo = ?
 ");
 $stmt_citas->bind_param("ii", $id_paciente, $id_odontologo);
 $stmt_citas->execute();

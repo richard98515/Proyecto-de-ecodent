@@ -40,19 +40,23 @@ if (!isset($_GET['id_cita'])) {
 
 $id_cita = (int)$_GET['id_cita'];
 
-// Obtener datos de la cita
+// =============================================
+// OBTENER DATOS DE LA CITA (CORREGIDO: usando tratamientos)
+// =============================================
 $sql = "SELECT c.*, 
-               p.id_paciente,
+               t.id_paciente,
+               t.id_odontologo,
                u.nombre_completo as nombre_paciente,
                u.email,
                u.telefono
         FROM citas c
-        JOIN pacientes p ON c.id_paciente = p.id_paciente
+        JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+        JOIN pacientes p ON t.id_paciente = p.id_paciente
         JOIN usuarios u ON p.id_usuario = u.id_usuario
         WHERE c.id_cita = ?";
 
 if ($es_odontologo && $id_odontologo) {
-    $sql .= " AND c.id_odontologo = ?";
+    $sql .= " AND t.id_odontologo = ?";
     $stmt = $conexion->prepare($sql);
     $stmt->bind_param("ii", $id_cita, $id_odontologo);
 } else {
@@ -68,12 +72,15 @@ if (!$cita) {
     redirigir('/ecodent/public/odontologo/calendario.php');
 }
 
+// Guardar el id_odontologo de la cita (puede ser diferente al del usuario si es admin)
+$id_odontologo_cita = $cita['id_odontologo'];
+
 // =============================================
 // AJAX: buscar slots por fecha
 // =============================================
 if (isset($_GET['ajax_fecha']) && isset($_GET['fecha_buscar'])) {
     $fecha_buscar = $_GET['fecha_buscar'];
-    $id_odonto_ajax = isset($_GET['id_odontologo']) ? (int)$_GET['id_odontologo'] : $id_odontologo;
+    $id_odonto_ajax = isset($_GET['id_odontologo']) ? (int)$_GET['id_odontologo'] : $id_odontologo_cita;
 
     $fecha_obj = DateTime::createFromFormat('Y-m-d', $fecha_buscar);
     if (!$fecha_obj || $fecha_buscar < date('Y-m-d')) {
@@ -105,7 +112,7 @@ $opciones_generadas = [];
 $fecha_inicio = date('Y-m-d', strtotime('+1 day'));
 for ($i = 0; $i < 7; $i++) {
     $fecha = date('Y-m-d', strtotime("+$i day", strtotime($fecha_inicio)));
-    $slots = generarSlotsDisponibles($id_odontologo, $fecha, $conexion);
+    $slots = generarSlotsDisponibles($id_odontologo_cita, $fecha, $conexion);
     foreach ($slots as $slot) {
         $opciones_generadas[] = [
             'fecha'            => $fecha,
@@ -152,17 +159,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancelar'])) {
                         motivo_cancelacion = ?
                     WHERE id_cita = ?
                 ");
-                $stmt->bind_param("sisi", $nuevo_estado, $id_odontologo, $motivo, $id_cita);
+                $cancelado_por = $es_admin ? 8 : $id_odontologo; // 8 = admin por defecto
+                $stmt->bind_param("sisi", $nuevo_estado, $cancelado_por, $motivo, $id_cita);
                 $stmt->execute();
                 
-                // 2. Bloquear el slot
+                // 2. Bloquear el slot (usando el id_odontologo de la cita)
                 $hora_fin = date('H:i:s', strtotime($cita['fecha_cita'] . ' ' . $cita['hora_cita']) + (40 * 60));
                 $stmt_bloq = $conexion->prepare("
                     INSERT INTO slots_bloqueados (id_odontologo, fecha, hora_inicio, hora_fin, motivo)
                     VALUES (?, ?, ?, ?, ?)
                 ");
                 $motivo_bloqueo = "Cancelación por odontólogo: " . $motivo;
-                $stmt_bloq->bind_param("issss", $id_odontologo, $cita['fecha_cita'], $cita['hora_cita'], $hora_fin, $motivo_bloqueo);
+                $stmt_bloq->bind_param("issss", $id_odontologo_cita, $cita['fecha_cita'], $cita['hora_cita'], $hora_fin, $motivo_bloqueo);
                 $stmt_bloq->execute();
                 
                 // 3. Guardar opciones de reprogramación
@@ -172,7 +180,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancelar'])) {
                     VALUES (?, ?, ?, ?)
                 ");
                 foreach ($opciones_seleccionadas as $opcion) {
-                    $stmt_opcion->bind_param("issi", $id_cita, $opcion['fecha'], $opcion['hora'], $id_odontologo);
+                    $stmt_opcion->bind_param("issi", $id_cita, $opcion['fecha'], $opcion['hora'], $id_odontologo_cita);
                     $stmt_opcion->execute();
                 }
                 
@@ -240,6 +248,7 @@ require_once '../../includes/header.php';
 ?>
 
 <style>
+/* (ESTILOS IGUALES QUE ANTES) */
 .slots-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -324,10 +333,10 @@ require_once '../../includes/header.php';
             </div>
             <div class="card-body">
                 <table class="table table-bordered mb-0">
-                    <tr><th>Paciente:</th><td><?php echo htmlspecialchars($cita['nombre_paciente']); ?></td></tr>
-                    <tr><th>Fecha:</th><td><?php echo date('d/m/Y', strtotime($cita['fecha_cita'])); ?></td></tr>
-                    <tr><th>Hora:</th><td><?php echo date('h:i A', strtotime($cita['hora_cita'])); ?></td></tr>
-                    <tr><th>Motivo:</th><td><?php echo htmlspecialchars($cita['motivo'] ?? 'No especificado'); ?></td></tr>
+                    <tr><th>Paciente:</th><td><?php echo htmlspecialchars($cita['nombre_paciente']); ?></td>
+                    <tr><th>Fecha:</th><td><?php echo date('d/m/Y', strtotime($cita['fecha_cita'])); ?></td>
+                    <tr><th>Hora:</th><td><?php echo date('h:i A', strtotime($cita['hora_cita'])); ?></td>
+                    <tr><th>Motivo:</th><td><?php echo htmlspecialchars($cita['motivo'] ?? 'No especificado'); ?></td>
                 </table>
             </div>
         </div>
@@ -507,7 +516,7 @@ function buscarSlotsPorFecha() {
     spinner.style.display = 'block';
     lista.innerHTML = '';
 
-    fetch(`cancelar_cita.php?id_cita=<?php echo $id_cita; ?>&ajax_fecha=1&fecha_buscar=${fecha}&id_odontologo=<?php echo $id_odontologo; ?>`)
+    fetch(`cancelar_cita.php?id_cita=<?php echo $id_cita; ?>&ajax_fecha=1&fecha_buscar=${fecha}&id_odontologo=<?php echo $id_odontologo_cita; ?>`)
         .then(r => r.json())
         .then(slots => {
             spinner.style.display = 'none';

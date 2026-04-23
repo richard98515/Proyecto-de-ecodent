@@ -19,15 +19,15 @@ $anio_actual = date('Y');
 // Estadísticas de citas por mes
 $citas_por_mes = $conexion->query("
     SELECT 
-        MONTH(fecha_cita) as mes,
+        MONTH(c.fecha_cita) as mes,
         COUNT(*) as total,
-        SUM(CASE WHEN estado = 'completada' THEN 1 ELSE 0 END) as completadas,
-        SUM(CASE WHEN estado = 'ausente' THEN 1 ELSE 0 END) as ausentes,
-        SUM(CASE WHEN estado = 'cancelada_pac' THEN 1 ELSE 0 END) as canceladas_pac,
-        SUM(CASE WHEN estado = 'cancelada_doc' THEN 1 ELSE 0 END) as canceladas_doc
-    FROM citas
-    WHERE YEAR(fecha_cita) = $anio_actual
-    GROUP BY MONTH(fecha_cita)
+        SUM(CASE WHEN c.estado = 'completada' THEN 1 ELSE 0 END) as completadas,
+        SUM(CASE WHEN c.estado = 'ausente' THEN 1 ELSE 0 END) as ausentes,
+        SUM(CASE WHEN c.estado = 'cancelada_pac' THEN 1 ELSE 0 END) as canceladas_pac,
+        SUM(CASE WHEN c.estado = 'cancelada_doc' THEN 1 ELSE 0 END) as canceladas_doc
+    FROM citas c
+    WHERE YEAR(c.fecha_cita) = $anio_actual
+    GROUP BY MONTH(c.fecha_cita)
     ORDER BY mes
 ");
 
@@ -51,7 +51,9 @@ $top_odontologos = $conexion->query("
         SUM(CASE WHEN c.estado = 'ausente' THEN 1 ELSE 0 END) as ausencias
     FROM odontologos o
     JOIN usuarios u ON o.id_usuario = u.id_usuario
-    LEFT JOIN citas c ON o.id_odontologo = c.id_odontologo AND YEAR(c.fecha_cita) = $anio_actual
+    LEFT JOIN citas c ON c.id_tratamiento IN (
+        SELECT id_tratamiento FROM tratamientos WHERE id_odontologo = o.id_odontologo
+    ) AND YEAR(c.fecha_cita) = $anio_actual
     WHERE o.activo = 1
     GROUP BY o.id_odontologo
     ORDER BY atendidas DESC
@@ -97,7 +99,7 @@ require_once '../../includes/header.php';
             <div class="card bg-primary text-white">
                 <div class="card-body">
                     <h3><?php 
-                        $total = $conexion->query("SELECT COUNT(*) as t FROM citas WHERE YEAR(fecha_cita) = $anio_actual")->fetch_assoc()['t'];
+                        $total = $conexion->query("SELECT COUNT(*) as t FROM citas c WHERE YEAR(c.fecha_cita) = $anio_actual")->fetch_assoc()['t'];
                         echo $total;
                     ?></h3>
                     <p>Total Citas</p>

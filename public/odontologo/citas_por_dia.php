@@ -106,19 +106,20 @@ if (!isset($_GET['fecha'])) {
 
 $fecha = $_GET['fecha'];
 
-// ──────────────────────────────────────────
-// OBTENER CITAS DEL DÍA (TODAS, incluidas canceladas)
-// ──────────────────────────────────────────
+// =============================================
+// OBTENER CITAS DEL DÍA (CORREGIDO)
+// =============================================
 $stmt_citas = $conexion->prepare(
     "SELECT c.*, 
-            p.id_paciente,
+            t.id_paciente,
             u.nombre_completo AS nombre_paciente,
             u.telefono,
             u.email
      FROM citas c
-     JOIN pacientes p ON c.id_paciente = p.id_paciente
-     JOIN usuarios  u ON p.id_usuario  = u.id_usuario
-     WHERE c.id_odontologo = ? AND c.fecha_cita = ?
+     JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+     JOIN pacientes p ON t.id_paciente = p.id_paciente
+     JOIN usuarios u ON p.id_usuario = u.id_usuario
+     WHERE t.id_odontologo = ? AND c.fecha_cita = ?
      ORDER BY c.hora_cita ASC, c.estado ASC"
 );
 $stmt_citas->bind_param("is", $id_odontologo, $fecha);

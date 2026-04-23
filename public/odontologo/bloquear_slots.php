@@ -9,7 +9,7 @@
 require_once '../../config/database.php';
 require_once '../../includes/funciones.php';
 require_once '../../includes/slots.php';
-date_default_timezone_set('America/La_Paz'); // Cambia según tu ubicación
+date_default_timezone_set('America/La_Paz');
 
 // Verificar que solo odontólogos puedan acceder
 requerirRol('odontologo');
@@ -77,10 +77,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bloquear'])) {
                         $hora_inicio = date('H:i:s', $hora_actual);
                         $hora_fin = date('H:i:s', $hora_actual + $paso);
                         
-                        // Verificar que no haya cita en ese horario
-                        $sql_verificar = "SELECT id_cita FROM citas 
-                                         WHERE id_odontologo = ? AND fecha_cita = ? AND hora_cita = ?
-                                         AND estado IN ('programada', 'confirmada')";
+                        // Verificar que no haya cita en ese horario (CORREGIDO: usando tratamientos)
+                        $sql_verificar = "SELECT c.id_cita FROM citas c
+                                         JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+                                         WHERE t.id_odontologo = ? AND c.fecha_cita = ? AND c.hora_cita = ?
+                                         AND c.estado IN ('programada', 'confirmada')";
                         $stmt_verificar = $conexion->prepare($sql_verificar);
                         $stmt_verificar->bind_param("iss", $id_odontologo, $fecha, $hora_inicio);
                         $stmt_verificar->execute();
@@ -128,10 +129,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bloquear'])) {
                     $hora_inicio = date('H:i:s', $hora_actual);
                     $hora_fin = date('H:i:s', $hora_actual + $paso);
                     
-                    // Verificar que no haya cita
-                    $sql_verificar = "SELECT id_cita FROM citas 
-                                     WHERE id_odontologo = ? AND fecha_cita = ? AND hora_cita = ?
-                                     AND estado IN ('programada', 'confirmada')";
+                    // Verificar que no haya cita (CORREGIDO: usando tratamientos)
+                    $sql_verificar = "SELECT c.id_cita FROM citas c
+                                     JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+                                     WHERE t.id_odontologo = ? AND c.fecha_cita = ? AND c.hora_cita = ?
+                                     AND c.estado IN ('programada', 'confirmada')";
                     $stmt_verificar = $conexion->prepare($sql_verificar);
                     $stmt_verificar->bind_param("iss", $id_odontologo, $fecha, $hora_inicio);
                     $stmt_verificar->execute();
@@ -169,10 +171,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bloquear'])) {
                     // Calcular hora fin
                     $hora_fin = date('H:i:s', strtotime($hora_inicio) + ($duracion_slot * 60));
                     
-                    // Verificar que no haya cita
-                    $sql_verificar = "SELECT id_cita FROM citas 
-                                     WHERE id_odontologo = ? AND fecha_cita = ? AND hora_cita = ?
-                                     AND estado IN ('programada', 'confirmada')";
+                    // Verificar que no haya cita (CORREGIDO: usando tratamientos)
+                    $sql_verificar = "SELECT c.id_cita FROM citas c
+                                     JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+                                     WHERE t.id_odontologo = ? AND c.fecha_cita = ? AND c.hora_cita = ?
+                                     AND c.estado IN ('programada', 'confirmada')";
                     $stmt_verificar = $conexion->prepare($sql_verificar);
                     $stmt_verificar->bind_param("iss", $id_odontologo, $fecha, $hora_inicio);
                     $stmt_verificar->execute();
@@ -462,12 +465,13 @@ if (isset($_SESSION['error'])) {
                 $horas_bloqueadas[] = $b['hora_inicio'];
             }
             
-            // Obtener citas programadas
-            $sql_citas = "SELECT hora_cita, nombre_completo 
+            // Obtener citas programadas (CORREGIDO: usando tratamientos)
+            $sql_citas = "SELECT c.hora_cita, u.nombre_completo 
                          FROM citas c
-                         JOIN pacientes p ON c.id_paciente = p.id_paciente
+                         JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+                         JOIN pacientes p ON t.id_paciente = p.id_paciente
                          JOIN usuarios u ON p.id_usuario = u.id_usuario
-                         WHERE c.id_odontologo = ? AND c.fecha_cita = ? 
+                         WHERE t.id_odontologo = ? AND c.fecha_cita = ? 
                          AND c.estado IN ('programada', 'confirmada')";
             $stmt_citas = $conexion->prepare($sql_citas);
             $stmt_citas->bind_param("is", $id_odontologo, $fecha_seleccionada);

@@ -107,11 +107,12 @@ try {
     if (!empty($slots_ocupados) && is_array($slots_ocupados)) {
         foreach ($slots_ocupados as $hora_slot) {
             $sql_verificar = "SELECT c.id_cita FROM citas c
-                              WHERE c.id_odontologo = ? AND c.fecha_cita = ? AND c.hora_cita = ?
-                              AND c.estado IN ('programada', 'confirmada')
-                              UNION
-                              SELECT sb.id_bloqueo FROM slots_bloqueados sb
-                              WHERE sb.id_odontologo = ? AND sb.fecha = ? AND sb.hora_inicio = ?";
+                  JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+                  WHERE t.id_odontologo = ? AND c.fecha_cita = ? AND c.hora_cita = ?
+                  AND c.estado IN ('programada', 'confirmada')
+                  UNION
+                  SELECT sb.id_bloqueo FROM slots_bloqueados sb
+                  WHERE sb.id_odontologo = ? AND sb.fecha = ? AND sb.hora_inicio = ?";
             $stmt_verificar = $conexion->prepare($sql_verificar);
             $stmt_verificar->bind_param("ississ", $id_odontologo, $fecha, $hora_slot, $id_odontologo, $fecha, $hora_slot);
             $stmt_verificar->execute();
@@ -131,14 +132,17 @@ try {
     // =============================================
     // INSERTAR CITA CON id_tratamiento
     // =============================================
-    $sql_insertar = "INSERT INTO citas (id_odontologo, id_paciente, id_tratamiento, fecha_cita, hora_cita, hora_fin, estado, motivo)
-                     VALUES (?, ?, ?, ?, ?, ?, 'programada', ?)";
-    $stmt_insertar = $conexion->prepare($sql_insertar);
-    $stmt_insertar->bind_param("iiissss", $id_odontologo, $id_paciente, $id_tratamiento, $fecha, $hora_inicio, $hora_fin, $motivo);
-    
-    if (!$stmt_insertar->execute()) {
-        throw new Exception("Error al crear la cita: " . $conexion->error);
-    }
+    // =============================================
+        // INSERTAR CITA (CORREGIDO - solo id_tratamiento)
+        // =============================================
+        $sql_insertar = "INSERT INTO citas (id_tratamiento, fecha_cita, hora_cita, hora_fin, estado, motivo)
+                        VALUES (?, ?, ?, ?, 'programada', ?)";
+        $stmt_insertar = $conexion->prepare($sql_insertar);
+        $stmt_insertar->bind_param("issss", $id_tratamiento, $fecha, $hora_inicio, $hora_fin, $motivo);
+
+        if (!$stmt_insertar->execute()) {
+            throw new Exception("Error al crear la cita: " . $conexion->error);
+        }
     
     $id_cita = $conexion->insert_id;
     

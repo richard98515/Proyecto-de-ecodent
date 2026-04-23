@@ -239,14 +239,17 @@ $meses = [
 ];
 $nombre_mes = $meses[$mes_actual];
 
-// CITAS DEL MES
+// =============================================
+// CITAS DEL MES (CORREGIDO: usando tratamientos)
+// =============================================
 $primer_dia = sprintf('%04d-%02d-01', $anio_actual, $mes_actual);
 $ultimo_dia = date('Y-m-t', strtotime($primer_dia));
 
 $stmt_citas = $conexion->prepare(
     "SELECT c.estado, DAY(c.fecha_cita) as dia
      FROM citas c
-     WHERE c.id_odontologo = ? AND c.fecha_cita BETWEEN ? AND ?
+     JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+     WHERE t.id_odontologo = ? AND c.fecha_cita BETWEEN ? AND ?
      ORDER BY c.hora_cita ASC"
 );
 if ($stmt_citas) {
@@ -267,7 +270,7 @@ if ($stmt_citas) {
     $citas_por_dia = [];
 }
 
-// BLOQUEOS DEL MES
+// BLOQUEOS DEL MES (no cambia, no usa citas)
 $stmt_bloqueos = $conexion->prepare(
     "SELECT DAY(fecha) as dia, COUNT(*) as total
      FROM slots_bloqueados
@@ -356,6 +359,7 @@ if ($es_admin && isset($_SESSION['admin_viendo_odontologo']) && $_SESSION['admin
 ?>
 
 <style>
+/* (ESTILOS IGUALES QUE ANTES, NO LOS MODIFICO) */
 .calendario-dia {
     height: 110px;
     border: 1px solid #dee2e6;
@@ -603,7 +607,7 @@ if ($es_admin && isset($_SESSION['admin_viendo_odontologo']) && $_SESSION['admin
                     $dia_semana_num = (int)date('N', strtotime($fecha_celda));
                     $es_hoy         = ($fecha_celda === $hoy);
 
-                    if ($dia_semana_num == 1 && $dia > 1) echo '</tr><tr>';
+                    if ($dia_semana_num == 1 && $dia > 1) echo '<tr>';
 
                     $info_citas   = $citas_por_dia[$dia] ?? null;
                     $num_bloqueos = $bloqueos_por_dia[$dia] ?? 0;

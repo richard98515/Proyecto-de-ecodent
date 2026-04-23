@@ -29,8 +29,9 @@ $stmt = $conexion->prepare("
            c.puede_modificar, c.cambios_realizados, c.limite_cambios,
            o.id_odontologo
     FROM citas c
-    JOIN pacientes p ON c.id_paciente = p.id_paciente
-    JOIN odontologos o ON c.id_odontologo = o.id_odontologo
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    JOIN pacientes p ON t.id_paciente = p.id_paciente
+    JOIN odontologos o ON t.id_odontologo = o.id_odontologo
     JOIN usuarios u ON o.id_usuario = u.id_usuario
     WHERE c.id_cita = ? AND p.id_usuario = ?
 ");
@@ -93,12 +94,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         else {
             // SOLO ESTA CONSULTA - EL TRIGGER HACE TODO LO DEMÁS
             $sql = "UPDATE citas 
-                    SET fecha_cita = ?, hora_cita = ?, hora_fin = ?, motivo = ?
-                    WHERE id_cita = ? AND id_paciente = ?";
-            
-            $stmt = $conexion->prepare($sql);
-            $stmt->bind_param("ssssii", $nueva_fecha, $nueva_hora, $nueva_hora_fin, $motivo, $id_cita, $cita['id_paciente']);
-            
+        SET fecha_cita = ?, hora_cita = ?, hora_fin = ?, motivo = ?
+        WHERE id_cita = ?";
+        
+$stmt = $conexion->prepare($sql);
+$stmt->bind_param("ssssi", $nueva_fecha, $nueva_hora, $nueva_hora_fin, $motivo, $id_cita);
             if ($stmt->execute()) {
                 // ✅ EL TRIGGER YA HIZO:
                 // 1. Incrementó cambios_realizados

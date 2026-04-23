@@ -58,7 +58,12 @@ if (isset($_GET['eliminar']) && is_numeric($_GET['eliminar'])) {
     $id_paciente = $_GET['eliminar'];
     
     // Verificar que el paciente tenga citas con este odontólogo
-    $stmt_verificar = $conexion->prepare("SELECT COUNT(*) as total FROM citas WHERE id_paciente = ? AND id_odontologo = ?");
+    $stmt_verificar = $conexion->prepare("
+    SELECT COUNT(*) as total 
+    FROM citas c
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    WHERE t.id_paciente = ? AND t.id_odontologo = ?
+");
     $stmt_verificar->bind_param("ii", $id_paciente, $id_odontologo);
     $stmt_verificar->execute();
     $total_citas = $stmt_verificar->get_result()->fetch_assoc()['total'];
@@ -315,12 +320,24 @@ if (isset($_SESSION['error'])) {
                             $ultima_cita = null;
                             
                             if ($es_odontologo && $id_odontologo) {
-                                $stmt_citas = $conexion->prepare("SELECT COUNT(*) as total FROM citas WHERE id_paciente = ? AND id_odontologo = ?");
+                                $stmt_citas = $conexion->prepare("
+                                    SELECT COUNT(*) as total 
+                                    FROM citas c
+                                    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+                                    WHERE t.id_paciente = ? AND t.id_odontologo = ?
+                                ");
                                 $stmt_citas->bind_param("ii", $paciente['id_paciente'], $id_odontologo);
                                 $stmt_citas->execute();
                                 $total_citas = $stmt_citas->get_result()->fetch_assoc()['total'];
                                 
-                                $stmt_ultima = $conexion->prepare("SELECT fecha_cita FROM citas WHERE id_paciente = ? AND id_odontologo = ? ORDER BY fecha_cita DESC LIMIT 1");
+                                $stmt_ultima = $conexion->prepare("
+                                    SELECT c.fecha_cita 
+                                    FROM citas c
+                                    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+                                    WHERE t.id_paciente = ? AND t.id_odontologo = ?
+                                    ORDER BY c.fecha_cita DESC 
+                                    LIMIT 1
+                                ");
                                 $stmt_ultima->bind_param("ii", $paciente['id_paciente'], $id_odontologo);
                                 $stmt_ultima->execute();
                                 $ultima_cita = $stmt_ultima->get_result()->fetch_assoc();

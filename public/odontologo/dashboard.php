@@ -1,6 +1,6 @@
 <?php
 // public/odontologo/dashboard.php
-// Panel principal del odontólogo - VERSIÓN SIMPLE Y BONITA (CORREGIDA)
+// Panel principal del odontólogo - VERSIÓN CORREGIDA (con nueva estructura BD)
 
 // =============================================
 // PROCESAMIENTO PRIMERO
@@ -8,7 +8,7 @@
 require_once '../../config/database.php';
 require_once '../../includes/funciones.php';
 
-date_default_timezone_set('America/La_Paz'); // Cambia según tu ubicación
+date_default_timezone_set('America/La_Paz');
 
 // Verificar que solo odontólogos puedan acceder
 requerirRol('odontologo');
@@ -28,24 +28,27 @@ $id_odontologo = $odontologo['id_odontologo'];
 // =============================================
 $hoy = date('Y-m-d');
 setlocale(LC_TIME, 'es_ES.UTF-8', 'es_ES', 'spanish');
-// 1. Citas de HOY
+
+// 1. Citas de HOY (CORREGIDO: usando tratamientos)
 $stmt_hoy = $conexion->prepare("
     SELECT COUNT(*) as total 
-    FROM citas 
-    WHERE id_odontologo = ? AND fecha_cita = ? 
-    AND estado IN ('programada', 'confirmada')
+    FROM citas c
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    WHERE t.id_odontologo = ? AND c.fecha_cita = ? 
+    AND c.estado IN ('programada', 'confirmada')
 ");
 $stmt_hoy->bind_param("is", $id_odontologo, $hoy);
 $stmt_hoy->execute();
 $citas_hoy = $stmt_hoy->get_result()->fetch_assoc()['total'];
 
-// 2. Próxima cita (la más cercana)
+// 2. Próxima cita (la más cercana) - CORREGIDO
 $stmt_proxima = $conexion->prepare("
     SELECT c.hora_cita, c.hora_fin, u.nombre_completo as paciente
     FROM citas c
-    JOIN pacientes p ON c.id_paciente = p.id_paciente
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    JOIN pacientes p ON t.id_paciente = p.id_paciente
     JOIN usuarios u ON p.id_usuario = u.id_usuario
-    WHERE c.id_odontologo = ? AND c.fecha_cita = ? 
+    WHERE t.id_odontologo = ? AND c.fecha_cita = ? 
     AND c.estado IN ('programada', 'confirmada')
     ORDER BY c.hora_cita ASC
     LIMIT 1
@@ -54,23 +57,25 @@ $stmt_proxima->bind_param("is", $id_odontologo, $hoy);
 $stmt_proxima->execute();
 $proxima_cita = $stmt_proxima->get_result()->fetch_assoc();
 
-// 3. Total de pacientes (los que has atendido)
+// 3. Total de pacientes atendidos (CORREGIDO)
 $stmt_pacientes = $conexion->prepare("
-    SELECT COUNT(DISTINCT c.id_paciente) as total
+    SELECT COUNT(DISTINCT t.id_paciente) as total
     FROM citas c
-    WHERE c.id_odontologo = ?
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    WHERE t.id_odontologo = ?
 ");
 $stmt_pacientes->bind_param("i", $id_odontologo);
 $stmt_pacientes->execute();
 $total_pacientes = $stmt_pacientes->get_result()->fetch_assoc()['total'];
 
-// 4. Próximas citas (para la tabla) - CORREGIDO: agregamos id_cita
+// 4. Próximas citas (para la tabla) - CORREGIDO
 $stmt_proximas = $conexion->prepare("
     SELECT c.id_cita, c.fecha_cita, c.hora_cita, c.hora_fin, u.nombre_completo as paciente
     FROM citas c
-    JOIN pacientes p ON c.id_paciente = p.id_paciente
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    JOIN pacientes p ON t.id_paciente = p.id_paciente
     JOIN usuarios u ON p.id_usuario = u.id_usuario
-    WHERE c.id_odontologo = ? 
+    WHERE t.id_odontologo = ? 
     AND c.fecha_cita >= CURDATE()
     AND c.estado IN ('programada', 'confirmada')
     ORDER BY c.fecha_cita ASC, c.hora_cita ASC
@@ -80,7 +85,7 @@ $stmt_proximas->bind_param("i", $id_odontologo);
 $stmt_proximas->execute();
 $proximas_citas = $stmt_proximas->get_result();
 
-// 5. Slots bloqueados hoy (para el recordatorio)
+// 5. Slots bloqueados hoy
 $stmt_bloq_hoy = $conexion->prepare("
     SELECT COUNT(*) as total 
     FROM slots_bloqueados 
@@ -90,11 +95,12 @@ $stmt_bloq_hoy->bind_param("is", $id_odontologo, $hoy);
 $stmt_bloq_hoy->execute();
 $bloqueos_hoy = $stmt_bloq_hoy->get_result()->fetch_assoc()['total'];
 
-// 6. Pacientes atendidos hoy
+// 6. Pacientes atendidos hoy - CORREGIDO
 $stmt_atendidos = $conexion->prepare("
     SELECT COUNT(*) as total 
-    FROM citas 
-    WHERE id_odontologo = ? AND fecha_cita = ? AND estado = 'completada'
+    FROM citas c
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    WHERE t.id_odontologo = ? AND c.fecha_cita = ? AND c.estado = 'completada'
 ");
 $stmt_atendidos->bind_param("is", $id_odontologo, $hoy);
 $stmt_atendidos->execute();
@@ -107,7 +113,7 @@ require_once '../../includes/header.php';
 ?>
 
 <style>
-/* Estilos simples y bonitos */
+/* Estilos simples y bonitos (igual que antes) */
 .welcome-box {
     background-color: #4361ee;
     color: white;
@@ -215,7 +221,6 @@ require_once '../../includes/header.php';
     color: white;
 }
 
-/* ESTILOS DE LA TABLA CON EFECTO HOVER EN TODO EL RECUADRO */
 .citas-table {
     background: white;
     border-radius: 15px;
@@ -242,7 +247,6 @@ require_once '../../includes/header.php';
     background-color: white;
 }
 
-/* EFECTO HOVER EN TODO EL RECUADRO - SE PINTA COMPLETO */
 .citas-table tbody tr:hover {
     background: linear-gradient(135deg, #e8f0fe 0%, #d9e8ff 100%);
     transform: scale(1.01);
@@ -250,12 +254,10 @@ require_once '../../includes/header.php';
     border-radius: 12px;
 }
 
-/* Para que todas las celdas hereden el fondo del hover */
 .citas-table tbody tr:hover td {
     background: transparent;
 }
 
-/* Estilo de las celdas */
 .citas-table td {
     padding: 15px;
     border-bottom: 1px solid #f0f0f0;
@@ -263,19 +265,16 @@ require_once '../../includes/header.php';
     vertical-align: middle;
 }
 
-/* Efecto adicional: borde izquierdo en la primera celda al hacer hover */
 .citas-table tbody tr:hover td:first-child {
     border-left: 4px solid #4361ee;
     border-radius: 8px 0 0 8px;
 }
 
-/* Efecto adicional: borde derecho en la última celda al hacer hover */
 .citas-table tbody tr:hover td:last-child {
     border-right: 4px solid #4361ee;
     border-radius: 0 8px 8px 0;
 }
 
-/* Animación de entrada para las filas */
 @keyframes slideIn {
     from {
         opacity: 0;
@@ -316,19 +315,16 @@ require_once '../../includes/header.php';
     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
-/* Efecto de clic */
 .citas-table tbody tr:active {
     transform: scale(0.99);
     transition: transform 0.1s ease;
 }
 
-/* Mejora en la legibilidad de los badges */
 .badge {
     padding: 5px 10px;
     font-weight: 500;
 }
 
-/* Efecto sutil en el ícono de flecha */
 .citas-table tbody tr:hover .bi-chevron-right {
     transform: translateX(5px);
     transition: transform 0.3s ease;
@@ -338,7 +334,6 @@ require_once '../../includes/header.php';
     transition: transform 0.3s ease;
 }
 
-/* Mejora en el aspecto de las filas alternas */
 .citas-table tbody tr:nth-child(even) {
     background-color: #fafbfd;
 }
@@ -494,31 +489,26 @@ require_once '../../includes/header.php';
                 </h5>
             </div>
             <div class="card-body">
-                <!-- Botón 1: Ver calendario -->
                 <a href="calendario.php" class="action-btn primary">
                     <i class="bi bi-calendar-week"></i>
                     Ver mi calendario
                 </a>
                 
-                <!-- Botón 2: Agendar cita (para tratamientos) -->
                 <a href="agendar_cita.php" class="action-btn success">
                     <i class="bi bi-calendar-plus"></i>
                     Agendar cita / tratamiento
                 </a>
                 
-                <!-- Botón 3: Bloquear slots (emergencia) - DESTACADO -->
                 <a href="bloquear_slots.php" class="action-btn warning">
                     <i class="bi bi-lock-fill"></i>
                     ⚠️ Bloquear slots (emergencia)
                 </a>
                 
-                <!-- Botón 4: Pacientes -->
                 <a href="pacientes.php" class="action-btn secondary">
                     <i class="bi bi-people"></i>
                     Ver mis pacientes
                 </a>
                 
-                <!-- Botón 5: Configurar horarios -->
                 <a href="configurar_horarios.php" class="action-btn secondary" style="background: #5a6268; margin-bottom: 0;">
                     <i class="bi bi-gear"></i>
                     Configurar horarios
@@ -549,15 +539,12 @@ require_once '../../includes/header.php';
 </div>
 
 <script>
-// Agregar un pequeño efecto de feedback al hacer clic en las filas
 document.querySelectorAll('.citas-table tbody tr').forEach(row => {
-    if (row.querySelector('td[colspan]')) return; // Saltar la fila de "no hay citas"
+    if (row.querySelector('td[colspan]')) return;
     
     row.addEventListener('click', function(e) {
-        // Evitar que se ejecute si se hizo clic en un enlace dentro de la fila
         if (e.target.tagName === 'A') return;
         
-        // Efecto visual de clic
         this.style.transform = 'scale(0.98)';
         this.style.transition = 'transform 0.1s ease';
         setTimeout(() => {

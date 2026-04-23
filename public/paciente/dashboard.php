@@ -41,9 +41,10 @@ $paciente = $resultado->fetch_assoc();
 $stmt2 = $conexion->prepare("
     SELECT c.*, o.especialidad_principal, u2.nombre_completo as nombre_odontologo
     FROM citas c
-    JOIN odontologos o ON c.id_odontologo = o.id_odontologo
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    JOIN odontologos o ON t.id_odontologo = o.id_odontologo
     JOIN usuarios u2 ON o.id_usuario = u2.id_usuario
-    WHERE c.id_paciente = ? 
+    WHERE t.id_paciente = ? 
       AND c.fecha_cita >= CURDATE() 
       AND c.estado IN ('programada', 'confirmada')
     ORDER BY c.fecha_cita ASC, c.hora_cita ASC
@@ -56,10 +57,11 @@ $proxima_cita = $stmt2->get_result()->fetch_assoc();
 // Contar citas activas
 $stmt_citas_activas = $conexion->prepare("
     SELECT COUNT(*) as total 
-    FROM citas 
-    WHERE id_paciente = ? 
-    AND fecha_cita >= CURDATE() 
-    AND estado IN ('programada', 'confirmada')
+    FROM citas c
+    JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+    WHERE t.id_paciente = ? 
+    AND c.fecha_cita >= CURDATE() 
+    AND c.estado IN ('programada', 'confirmada')
 ");
 $stmt_citas_activas->bind_param("i", $paciente['id_paciente']);
 $stmt_citas_activas->execute();

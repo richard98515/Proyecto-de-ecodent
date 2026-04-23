@@ -34,19 +34,21 @@ function generarSlotsDisponibles($id_odontologo, $fecha, $conexion, $excluir_cit
     
     // =============================================
     // PASO 3: Obtener citas ocupadas con hora_inicio Y hora_fin
-    // ✅ FIX: traemos hora_fin para detectar citas largas
+    // ✅ CORREGIDO: usando JOIN con tratamientos
     // =============================================
-    $sql2 = "SELECT hora_cita, hora_fin FROM citas 
-             WHERE id_odontologo = ? AND fecha_cita = ? 
-             AND estado IN ('programada', 'confirmada')
-             AND id_cita != ?";
+    $sql2 = "SELECT c.hora_cita, c.hora_fin 
+             FROM citas c
+             JOIN tratamientos t ON c.id_tratamiento = t.id_tratamiento
+             WHERE t.id_odontologo = ? AND c.fecha_cita = ? 
+             AND c.estado IN ('programada', 'confirmada')
+             AND c.id_cita != ?";
     
     $stmt2 = $conexion->prepare($sql2);
     $stmt2->bind_param("isi", $id_odontologo, $fecha, $excluir_cita);
     $stmt2->execute();
     $resultado2 = $stmt2->get_result();
     
-    // ✅ FIX: guardamos rangos [inicio, fin] en vez de solo hora_cita
+    // Guardamos rangos [inicio, fin] en vez de solo hora_cita
     $citas_ocupadas = [];
     while ($row = $resultado2->fetch_assoc()) {
         $hora_fin_cita = $row['hora_fin'] 
@@ -84,7 +86,7 @@ function generarSlotsDisponibles($id_odontologo, $fecha, $conexion, $excluir_cit
     while ($hora_actual + $paso <= $fin) {
         $hora_fin_slot = $hora_actual + $paso;
         
-        // ✅ FIX: verificar solapamiento con rango completo, no solo hora exacta
+        // Verificar solapamiento con rango completo, no solo hora exacta
         $ocupado = false;
         foreach ($citas_ocupadas as $cita) {
             // El slot se solapa si empieza antes de que termine la cita
